@@ -28,6 +28,10 @@ bin/
 ffmpeg.exe
 ffprobe.exe
 
+# ── Temporary inspection / large binary artifacts ────────────
+android/tmp_inspect2/
+android/tmp_inspect/
+
 # ── Desktop App – Logs & Cache ───────────────────────────────
 *.log
 *.tmp
