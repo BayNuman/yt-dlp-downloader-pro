@@ -29,7 +29,7 @@ powered by yt-dlp + ffmpeg — download videos, music and playlists from YouTube
 | Platform | Package Type / Paket Türü | Direct Link / Doğrudan İndirme Linki |
 | :--- | :--- | :--- |
 | **🖥️ Windows** | **Installer / Kurulum (Recommended)** | [**📥 Download Setup (.exe)**](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp_Downloader_Pro_Setup.exe) |
-| **🖥️ Windows** | **Portable / Taşınabilir (No Install)** | [**📥 Download Portable App (.exe)**](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp_Downloader_Pro.exe) |
+| **🖥️ Windows** | **Portable / Taşınabilir (No Install)** | [**📥 Download Portable App (.exe)**](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp.Downloader.Pro.exe) |
 | **📱 Android** | **APK / Mobil Uygulama** | [**📥 Download Mobile App (.apk)**](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/app-debug.apk) |
 
 </div>
