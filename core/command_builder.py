@@ -23,6 +23,7 @@ AUDIO_PRESET_QUALITY = {
 }
 
 DEFAULT_OUTPUT_TEMPLATE = "%(title)s [%(id)s].%(ext)s"
+YOUTUBE_FALLBACK_EXTRACTOR_ARGS = "youtube:player-client=tv"
 
 def effective_video_height(item_config: dict) -> str:
     selected = VIDEO_PRESET_HEIGHT.get(item_config.get("video_profile"), "1080")
