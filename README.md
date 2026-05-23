@@ -68,7 +68,7 @@ Supports **YouTube, Vimeo, SoundCloud, Twitter/X, Instagram, TikTok** and [1000+
 ### 🖥️ Desktop — Light Mode
 
 <div align="center">
-<img src="assets/screenshots/desktop_light_main.png" alt="Desktop Light Mode — Main" width="49%"/> <img src="assets/screenshots/desktop_light_settings.jpg" alt="Desktop Light Mode — Advanced Settings" width="49%"/>
+<img src="assets/screenshots/desktop_light_main.png" alt="Desktop Light Mode — Main" width="49%"/> <img src="assets/screenshots/desktop_light_settings.png" alt="Desktop Light Mode — Advanced Settings" width="49%"/>
 </div>
 
 ### 📱 Android
@@ -78,7 +78,7 @@ Supports **YouTube, Vimeo, SoundCloud, Twitter/X, Instagram, TikTok** and [1000+
 <img src="assets/screenshots/android_queue.png" alt="Android — Queue" width="19%"/>
 <img src="assets/screenshots/android_history.png" alt="Android — History" width="19%"/>
 <img src="assets/screenshots/android_settings.png" alt="Android — Settings" width="19%"/>
-<img src="assets/screenshots/android_light.jpg" alt="Android — Download (Light)" width="19%"/>
+<img src="assets/screenshots/android_light.png" alt="Android — Download (Light)" width="19%"/>
 </div>
 
 
