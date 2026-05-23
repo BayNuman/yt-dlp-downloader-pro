@@ -1,0 +1,79 @@
+# ============================================================
+#  yt-dlp Downloader Pro — .gitignore
+# ============================================================
+
+# ── Python ──────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+ENV/
+env/
+pip-wheel-metadata/
+
+# ── PyInstaller / Build ─────────────────────────────────────
+build/
+dist/
+*.spec
+*.egg-info/
+*.egg
+MANIFEST
+
+# ── Bundled binaries (downloaded at build time) ──────────────
+bin/
+ffmpeg.exe
+ffprobe.exe
+
+# ── Desktop App – Logs & Cache ───────────────────────────────
+*.log
+*.tmp
+*.cache
+download_history.json
+asd.txt
+
+# ── Android ─────────────────────────────────────────────────
+android/.gradle/
+android/.kotlin/
+android/app/build/
+android/build/
+android/local.properties
+android/captures/
+android/.externalNativeBuild/
+android/.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# ── IDE & Editor ────────────────────────────────────────────
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── OS ──────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+ehthumbs.db
+ehthumbs_vista.db
+
+# ── Secrets / Config ────────────────────────────────────────
+.env
+.env.*
+*.pem
+secrets.json
+google-services.json
