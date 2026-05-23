@@ -1,4 +1,4 @@
-package com.salih.ytdownloader
+package com.baynuman.ytdownloader
 
 import android.Manifest
 import android.content.Context
@@ -16,9 +16,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.salih.ytdownloader.ui.DownloaderScreen
-import com.salih.ytdownloader.ui.DownloaderViewModel
-import com.salih.ytdownloader.ui.theme.YtDownloaderTheme
+import com.baynuman.ytdownloader.ui.DownloaderScreen
+import com.baynuman.ytdownloader.ui.DownloaderViewModel
+import com.baynuman.ytdownloader.ui.theme.YtDownloaderTheme
 
 class MainActivity : ComponentActivity() {
     private var downloaderViewModelRef: DownloaderViewModel? = null

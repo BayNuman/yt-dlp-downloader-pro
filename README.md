@@ -12,7 +12,25 @@ powered by yt-dlp + ffmpeg — download videos, music and playlists from YouTube
 [![GitHub release](https://img.shields.io/github/v/release/BayNuman/yt-dlp-downloader-pro?include_prereleases)](https://github.com/BayNuman/yt-dlp-downloader-pro/releases)
 [![Stars](https://img.shields.io/github/stars/BayNuman/yt-dlp-downloader-pro?style=social)](https://github.com/BayNuman/yt-dlp-downloader-pro/stargazers)
 
-[📥 Download for Windows](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest) · [📱 Download APK](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest) · [🐛 Report Bug](https://github.com/BayNuman/yt-dlp-downloader-pro/issues/new?template=bug_report.md) · [💡 Request Feature](https://github.com/BayNuman/yt-dlp-downloader-pro/issues/new?template=feature_request.md)
+[🚀 Direct Download Setup (Windows)](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp_Downloader_Pro_Setup.exe) · [📱 Direct Download APK (Android)](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/app-debug.apk) · [🐛 Report Bug](https://github.com/BayNuman/yt-dlp-downloader-pro/issues/new?template=bug_report.md) · [💡 Request Feature](https://github.com/BayNuman/yt-dlp-downloader-pro/issues/new?template=feature_request.md)
+
+</div>
+
+---
+
+## 📥 Quick Download / Hızlı İndir (Zero-Config)
+
+> 💡 **For non-technical users:** You do **NOT** need to install Python, ffmpeg, or use command-line/terminal. Everything is pre-bundled and works with a single click!
+> 
+> 💡 **Teknik olmayan kullanıcılar için:** Bilgisayarınıza veya telefonunuza ek bir program (Python, ffmpeg vb.) kurmanız gerekmez. Her şey paketlenmiştir, tek tıkla çalışır!
+
+<div align="center">
+
+| Platform | Package Type / Paket Türü | Direct Link / Doğrudan İndirme Linki |
+| :--- | :--- | :--- |
+| **🖥️ Windows** | **Installer / Kurulum (Recommended)** | [**📥 Download Setup (.exe)**](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp_Downloader_Pro_Setup.exe) |
+| **🖥️ Windows** | **Portable / Taşınabilir (No Install)** | [**📥 Download Portable App (.exe)**](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp_Downloader_Pro.exe) |
+| **📱 Android** | **APK / Mobil Uygulama** | [**📥 Download Mobile App (.apk)**](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/app-debug.apk) |
 
 </div>
 
@@ -200,7 +218,7 @@ yt-dlp-downloader-pro/
 └── 📱 Android (Kotlin + Jetpack Compose)
     └── android/
         └── app/src/main/
-            ├── java/com/salih/ytdownloader/
+            ├── java/com/baynuman/ytdownloader/
             │   ├── MainActivity.kt           # App entry + permissions
             │   ├── DownloadService.kt        # Foreground download service
             │   └── ui/

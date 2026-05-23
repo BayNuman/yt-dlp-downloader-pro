@@ -1,4 +1,4 @@
-package com.salih.ytdownloader.ui.theme
+package com.baynuman.ytdownloader.ui.theme
 
 object Translations {
     val languages = listOf("en", "tr", "es")

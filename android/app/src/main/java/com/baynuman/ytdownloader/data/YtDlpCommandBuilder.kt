@@ -1,4 +1,4 @@
-package com.salih.ytdownloader.data
+package com.baynuman.ytdownloader.data
 
 class YtDlpCommandBuilder {
     fun buildPrimaryCommand(request: DownloadRequest): List<String> {

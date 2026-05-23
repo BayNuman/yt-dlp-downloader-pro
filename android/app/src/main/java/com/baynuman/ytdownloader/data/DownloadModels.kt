@@ -1,4 +1,4 @@
-package com.salih.ytdownloader.data
+package com.baynuman.ytdownloader.data
 
 const val DEFAULT_OUTPUT_TEMPLATE = "%(title)s [%(id)s].%(ext)s"
 const val YOUTUBE_FALLBACK_EXTRACTOR_ARGS = "youtube:player-client=tv"

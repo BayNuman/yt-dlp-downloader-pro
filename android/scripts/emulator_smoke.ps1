@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $apkPath = Join-Path $projectRoot "app\build\outputs\apk\debug\app-debug.apk"
-$packageName = "com.salih.ytdownloader"
+$packageName = "com.baynuman.ytdownloader"
 $downloadDir = "/storage/emulated/0/Android/data/$packageName/files/Download/yt-downloads"
 $telemetryTag = "YTDownloaderTelemetry"
 $runnerTag = "YTDownloaderRunner"

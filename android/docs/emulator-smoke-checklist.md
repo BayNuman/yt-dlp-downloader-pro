@@ -71,6 +71,6 @@ Ornek eventler:
 
 1. Uygulama icindeki `Canli Log` panelini kontrol et.
 2. Emulator dosya klasorunu kontrol et:
-   - `/storage/emulated/0/Android/data/com.salih.ytdownloader/files/Download/yt-downloads`
+   - `/storage/emulated/0/Android/data/com.baynuman.ytdownloader/files/Download/yt-downloads`
 3. Gerekirse logcat filtrele:
    - `adb logcat -d | Select-String -Pattern "YTDownloaderTelemetry|YTDownloaderRunner|403|permission|yt-dlp|Forbidden"`

@@ -1,4 +1,4 @@
-package com.salih.ytdownloader.ui
+package com.baynuman.ytdownloader.ui
 
 import android.app.Application
 import android.content.ClipboardManager
@@ -10,15 +10,15 @@ import android.provider.DocumentsContract
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.salih.ytdownloader.data.BROWSER_COOKIE_SOURCES
-import com.salih.ytdownloader.data.BinaryInstaller
-import com.salih.ytdownloader.data.DEFAULT_OUTPUT_TEMPLATE
-import com.salih.ytdownloader.data.DownloadEvent
-import com.salih.ytdownloader.data.DownloadMode
-import com.salih.ytdownloader.data.DownloadRequest
-import com.salih.ytdownloader.data.UrlPreview
-import com.salih.ytdownloader.data.UrlPreviewResolver
-import com.salih.ytdownloader.data.YtDlpRunner
+import com.baynuman.ytdownloader.data.BROWSER_COOKIE_SOURCES
+import com.baynuman.ytdownloader.data.BinaryInstaller
+import com.baynuman.ytdownloader.data.DEFAULT_OUTPUT_TEMPLATE
+import com.baynuman.ytdownloader.data.DownloadEvent
+import com.baynuman.ytdownloader.data.DownloadMode
+import com.baynuman.ytdownloader.data.DownloadRequest
+import com.baynuman.ytdownloader.data.UrlPreview
+import com.baynuman.ytdownloader.data.UrlPreviewResolver
+import com.baynuman.ytdownloader.data.YtDlpRunner
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
@@ -32,7 +32,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import android.os.Build
-import com.salih.ytdownloader.data.DownloadRecord
+import com.baynuman.ytdownloader.data.DownloadRecord
 
 enum class UrlValidationState {
     IDLE,
@@ -853,13 +853,13 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun loadHistory() {
-        val list = mutableListOf<com.salih.ytdownloader.data.DownloadRecord>()
+        val list = mutableListOf<com.baynuman.ytdownloader.data.DownloadRecord>()
         try {
             val jsonStr = prefs.getString("download_history", "[]") ?: "[]"
             val array = org.json.JSONArray(jsonStr)
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
-                list.add(com.salih.ytdownloader.data.DownloadRecord.fromJsonObject(obj))
+                list.add(com.baynuman.ytdownloader.data.DownloadRecord.fromJsonObject(obj))
             }
         } catch (_: Exception) {}
         updateState { copy(historyRecords = list.sortedByDescending { it.downloadedAt }) }
@@ -867,7 +867,7 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
 
     fun addToHistory(title: String, url: String, format: String, sizeBytes: Long) {
         val id = java.util.UUID.randomUUID().toString()
-        val record = com.salih.ytdownloader.data.DownloadRecord(
+        val record = com.baynuman.ytdownloader.data.DownloadRecord(
             id = id,
             title = title,
             url = url,
@@ -895,9 +895,9 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun startForegroundDownloadService(title: String) {
         try {
-            val intent = Intent(appContext, com.salih.ytdownloader.service.DownloadService::class.java).apply {
-                action = com.salih.ytdownloader.service.DownloadService.ACTION_START
-                putExtra(com.salih.ytdownloader.service.DownloadService.EXTRA_TITLE, title)
+            val intent = Intent(appContext, com.baynuman.ytdownloader.service.DownloadService::class.java).apply {
+                action = com.baynuman.ytdownloader.service.DownloadService.ACTION_START
+                putExtra(com.baynuman.ytdownloader.service.DownloadService.EXTRA_TITLE, title)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 appContext.startForegroundService(intent)
@@ -909,12 +909,12 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun updateForegroundDownloadService(title: String, progress: Int, speed: String, eta: String) {
         try {
-            val intent = Intent(appContext, com.salih.ytdownloader.service.DownloadService::class.java).apply {
-                action = com.salih.ytdownloader.service.DownloadService.ACTION_UPDATE
-                putExtra(com.salih.ytdownloader.service.DownloadService.EXTRA_TITLE, title)
-                putExtra(com.salih.ytdownloader.service.DownloadService.EXTRA_PROGRESS, progress)
-                putExtra(com.salih.ytdownloader.service.DownloadService.EXTRA_SPEED, speed)
-                putExtra(com.salih.ytdownloader.service.DownloadService.EXTRA_ETA, eta)
+            val intent = Intent(appContext, com.baynuman.ytdownloader.service.DownloadService::class.java).apply {
+                action = com.baynuman.ytdownloader.service.DownloadService.ACTION_UPDATE
+                putExtra(com.baynuman.ytdownloader.service.DownloadService.EXTRA_TITLE, title)
+                putExtra(com.baynuman.ytdownloader.service.DownloadService.EXTRA_PROGRESS, progress)
+                putExtra(com.baynuman.ytdownloader.service.DownloadService.EXTRA_SPEED, speed)
+                putExtra(com.baynuman.ytdownloader.service.DownloadService.EXTRA_ETA, eta)
             }
             appContext.startService(intent)
         } catch (_: Exception) {}
@@ -922,8 +922,8 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun stopForegroundDownloadService() {
         try {
-            val intent = Intent(appContext, com.salih.ytdownloader.service.DownloadService::class.java).apply {
-                action = com.salih.ytdownloader.service.DownloadService.ACTION_STOP
+            val intent = Intent(appContext, com.baynuman.ytdownloader.service.DownloadService::class.java).apply {
+                action = com.baynuman.ytdownloader.service.DownloadService.ACTION_STOP
             }
             appContext.startService(intent)
         } catch (_: Exception) {}

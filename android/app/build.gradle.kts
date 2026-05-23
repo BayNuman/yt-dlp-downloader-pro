@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.salih.ytdownloader"
+    namespace = "com.baynuman.ytdownloader"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.salih.ytdownloader"
+        applicationId = "com.baynuman.ytdownloader"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

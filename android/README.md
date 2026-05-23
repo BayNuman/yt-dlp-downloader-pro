@@ -4,8 +4,8 @@ Bu klasor, `yt-dlp` tabanli downloader projesinin Android (Kotlin + Jetpack Comp
 
 ## Dosya Yapisi
 
-- `app/src/main/java/com/salih/ytdownloader/ui`: Compose ekranlari + ViewModel
-- `app/src/main/java/com/salih/ytdownloader/data`: yt-dlp komut builder + process runner
+- `app/src/main/java/com/baynuman/ytdownloader/ui`: Compose ekranlari + ViewModel
+- `app/src/main/java/com/baynuman/ytdownloader/data`: yt-dlp komut builder + process runner
 - `app/build.gradle.kts`: Android modul bagimliliklari
 
 ## Calistirma

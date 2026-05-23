@@ -1,4 +1,4 @@
-package com.salih.ytdownloader.service
+package com.baynuman.ytdownloader.service
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -10,7 +10,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import com.salih.ytdownloader.MainActivity
+import com.baynuman.ytdownloader.MainActivity
 
 class DownloadService : Service() {
 
@@ -107,9 +107,9 @@ class DownloadService : Service() {
         private const val NOTIFICATION_ID = 4040
         private const val CHANNEL_ID = "download_progress_channel"
 
-        const val ACTION_START = "com.salih.ytdownloader.action.START"
-        const val ACTION_UPDATE = "com.salih.ytdownloader.action.UPDATE"
-        const val ACTION_STOP = "com.salih.ytdownloader.action.STOP"
+        const val ACTION_START = "com.baynuman.ytdownloader.action.START"
+        const val ACTION_UPDATE = "com.baynuman.ytdownloader.action.UPDATE"
+        const val ACTION_STOP = "com.baynuman.ytdownloader.action.STOP"
 
         const val EXTRA_TITLE = "extra_title"
         const val EXTRA_PROGRESS = "extra_progress"

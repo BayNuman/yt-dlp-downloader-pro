@@ -1,4 +1,4 @@
-package com.salih.ytdownloader.ui
+package com.baynuman.ytdownloader.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -33,24 +33,24 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.salih.ytdownloader.data.AUDIO_FORMAT_OPTIONS
-import com.salih.ytdownloader.data.AUDIO_PRESET_QUALITY
-import com.salih.ytdownloader.data.BROWSER_COOKIE_SOURCES
-import com.salih.ytdownloader.data.DownloadMode
-import com.salih.ytdownloader.data.VIDEO_AUDIO_CODEC_OPTIONS
-import com.salih.ytdownloader.data.VIDEO_CONTAINER_OPTIONS
-import com.salih.ytdownloader.data.VIDEO_LIMIT_OPTIONS
-import com.salih.ytdownloader.data.VIDEO_PRESET_HEIGHT
-import com.salih.ytdownloader.ui.theme.AppRadius
-import com.salih.ytdownloader.ui.theme.AppSpacing
-import com.salih.ytdownloader.ui.theme.Translations
-import com.salih.ytdownloader.ui.theme.AccentCyan
-import com.salih.ytdownloader.ui.theme.AccentIndigo
-import com.salih.ytdownloader.ui.theme.AccentBlue
-import com.salih.ytdownloader.ui.theme.AccentGreen
-import com.salih.ytdownloader.ui.theme.AccentRed
-import com.salih.ytdownloader.ui.theme.ObsidianBg
-import com.salih.ytdownloader.ui.theme.PastelBg
+import com.baynuman.ytdownloader.data.AUDIO_FORMAT_OPTIONS
+import com.baynuman.ytdownloader.data.AUDIO_PRESET_QUALITY
+import com.baynuman.ytdownloader.data.BROWSER_COOKIE_SOURCES
+import com.baynuman.ytdownloader.data.DownloadMode
+import com.baynuman.ytdownloader.data.VIDEO_AUDIO_CODEC_OPTIONS
+import com.baynuman.ytdownloader.data.VIDEO_CONTAINER_OPTIONS
+import com.baynuman.ytdownloader.data.VIDEO_LIMIT_OPTIONS
+import com.baynuman.ytdownloader.data.VIDEO_PRESET_HEIGHT
+import com.baynuman.ytdownloader.ui.theme.AppRadius
+import com.baynuman.ytdownloader.ui.theme.AppSpacing
+import com.baynuman.ytdownloader.ui.theme.Translations
+import com.baynuman.ytdownloader.ui.theme.AccentCyan
+import com.baynuman.ytdownloader.ui.theme.AccentIndigo
+import com.baynuman.ytdownloader.ui.theme.AccentBlue
+import com.baynuman.ytdownloader.ui.theme.AccentGreen
+import com.baynuman.ytdownloader.ui.theme.AccentRed
+import com.baynuman.ytdownloader.ui.theme.ObsidianBg
+import com.baynuman.ytdownloader.ui.theme.PastelBg
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)

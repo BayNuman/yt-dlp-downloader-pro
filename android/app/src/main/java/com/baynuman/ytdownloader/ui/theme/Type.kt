@@ -1,4 +1,4 @@
-package com.salih.ytdownloader.ui.theme
+package com.baynuman.ytdownloader.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
