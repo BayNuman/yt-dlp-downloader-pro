@@ -78,7 +78,7 @@ Supports **YouTube, Vimeo, SoundCloud, Twitter/X, Instagram, TikTok** and [1000+
 <img src="assets/screenshots/android_queue.png" alt="Android — Queue" width="19%"/>
 <img src="assets/screenshots/android_history.png" alt="Android — History" width="19%"/>
 <img src="assets/screenshots/android_settings.png" alt="Android — Settings" width="19%"/>
-<img src="assets/screenshots/android_light.png" alt="Android — Download (Light)" width="19%"/>
+<img src="assets/screenshots/android_light.jpg" alt="Android — Download (Light)" width="19%"/>
 </div>
 
 
