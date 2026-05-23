@@ -1,0 +1,1 @@
+# ui/panels module initialization
