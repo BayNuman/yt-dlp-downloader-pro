@@ -16,14 +16,14 @@ class PreviewPanel(ctk.CTkFrame):
             corner_radius=16,
             **kwargs
         )
-        self.state = state
+        self.app_state = state
         self.on_chapter_click = on_chapter_click_callback
         
         self.grid_columnconfigure(1, weight=1)
         self._build_ui()
 
     def _build_ui(self):
-        lang = self.state.current_lang
+        lang = self.app_state.current_lang
 
         # Loading visual overlay
         self.preview_loading_lbl = ctk.CTkLabel(
@@ -175,11 +175,11 @@ class PreviewPanel(ctk.CTkFrame):
         self.thumb_label.grid_remove()
         self.meta_info.grid_remove()
         self.chapters_frame.grid_remove()
-        self.preview_loading_lbl.configure(text=TRANSLATIONS[self.state.current_lang]["lbl_preview_err"])
+        self.preview_loading_lbl.configure(text=TRANSLATIONS[self.app_state.current_lang]["lbl_preview_err"])
         self.preview_loading_lbl.grid()
 
     def refresh_translations(self):
-        lang = self.state.current_lang
+        lang = self.app_state.current_lang
         self.preview_loading_lbl.configure(text=TRANSLATIONS[lang]["lbl_preview_loading"])
         self.preview_title_lbl.configure(text=TRANSLATIONS[lang]["lbl_preview_title"])
         self.preview_author_lbl.configure(text=TRANSLATIONS[lang]["lbl_preview_author"])

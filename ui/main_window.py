@@ -34,13 +34,13 @@ from ui.panels.progress_panel import ProgressPanel
 class MainWindow(ctk.CTk):
     def __init__(self, state: AppState):
         super().__init__()
-        self.state = state
+        self.app_state = state
         self.ui_queue = queue.Queue()
         self.cancel_event = threading.Event()
         self.last_fetched_url = ""
         
         # Setup paths
-        self.state.output_dir = str(Path.home() / "Downloads" / "yt-downloads")
+        self.app_state.output_dir = str(Path.home() / "Downloads" / "yt-downloads")
         self.scratch_dir = Path.home() / ".yt-downloader-scratch"
         self.scratch_dir.mkdir(parents=True, exist_ok=True)
         
@@ -53,7 +53,7 @@ class MainWindow(ctk.CTk):
         self.resizable(False, False)
         
         self.configure(fg_color=THEME_BG)
-        ctk.set_appearance_mode(self.state.current_theme)
+        ctk.set_appearance_mode(self.app_state.current_theme)
 
         # Setup layout configurations
         self.grid_columnconfigure(0, weight=1)
@@ -75,7 +75,7 @@ class MainWindow(ctk.CTk):
         self._drain_ui_queue()
 
     def _build_header_card(self):
-        lang = self.state.current_lang
+        lang = self.app_state.current_lang
         
         # Header frosted glass card
         header_card = ctk.CTkFrame(
@@ -116,7 +116,7 @@ class MainWindow(ctk.CTk):
 
         self.theme_btn = ctk.CTkButton(
             config_frame,
-            text=TRANSLATIONS[lang]["theme_dark"] if self.state.current_theme == "Dark" else TRANSLATIONS[lang]["theme_light"],
+            text=TRANSLATIONS[lang]["theme_dark"] if self.app_state.current_theme == "Dark" else TRANSLATIONS[lang]["theme_light"],
             width=110,
             height=30,
             corner_radius=8,
@@ -151,24 +151,24 @@ class MainWindow(ctk.CTk):
 
     def _build_panels(self):
         # 1. URL Panel (Inputs)
-        self.url_panel = UrlPanel(self.main_scroll, self.state, self._trigger_metadata_fetch)
+        self.url_panel = UrlPanel(self.main_scroll, self.app_state, self._trigger_metadata_fetch)
         self.url_panel.grid(row=1, column=0, padx=4, pady=6, sticky="ew")
 
         # 2. Preview Panel (Metadata Viewer)
-        self.preview_panel = PreviewPanel(self.main_scroll, self.state, self._on_chapter_clicked)
+        self.preview_panel = PreviewPanel(self.main_scroll, self.app_state, self._on_chapter_clicked)
         self.preview_panel.grid(row=2, column=0, padx=4, pady=6, sticky="ew")
         self.preview_panel.hide()
 
         # 3. Advanced Panel (Gelişmiş Ayarlar)
-        self.advanced_panel = AdvancedPanel(self.main_scroll, self.state, self._on_preset_applied)
+        self.advanced_panel = AdvancedPanel(self.main_scroll, self.app_state, self._on_preset_applied)
         self.advanced_panel.grid(row=3, column=0, padx=4, pady=6, sticky="ew")
 
         # 4. Queue Panel (Kuyruk listesi & Geçmiş)
-        self.queue_panel = QueuePanel(self.main_scroll, self.state, self._remove_from_queue, self._redownload_historic_item)
+        self.queue_panel = QueuePanel(self.main_scroll, self.app_state, self._remove_from_queue, self._redownload_historic_item)
         self.queue_panel.grid(row=4, column=0, padx=4, pady=6, sticky="ew")
 
         # 5. Progress Dashboard Panel (İndirme İlerleme Paneli)
-        self.progress_panel = ProgressPanel(self.main_scroll, self.state, self._start_download, self._cancel_download, self._open_output_dir)
+        self.progress_panel = ProgressPanel(self.main_scroll, self.app_state, self._start_download, self._cancel_download, self._open_output_dir)
         self.progress_panel.grid(row=5, column=0, padx=4, pady=6, sticky="ew")
 
         # Bind close handler
@@ -176,11 +176,11 @@ class MainWindow(ctk.CTk):
 
     # ================== METADATA FETCH IMPLEMENTATIONS ==================
     def _trigger_metadata_fetch(self) -> None:
-        if self.state.is_batch_mode:
+        if self.app_state.is_batch_mode:
             self.preview_panel.hide()
             return
 
-        url = self.state.url.strip()
+        url = self.app_state.url.strip()
         if not url or not url.startswith(("http://", "https://")):
             self.preview_panel.hide()
             return
@@ -233,7 +233,7 @@ class MainWindow(ctk.CTk):
                     print(f"Thumbnail download failed: {e}")
 
             # Cache the extracted info inside state
-            self.state.current_video_info = info
+            self.app_state.current_video_info = info
 
             fetched_metadata = {
                 "url": url,
@@ -260,7 +260,7 @@ class MainWindow(ctk.CTk):
         self.advanced_panel._validate_clip_entries()
         
         # Focus on advanced panel
-        self.advanced_panel.tabview.set(TRANSLATIONS[self.state.current_lang]["tab_clip"])
+        self.advanced_panel.tabview.set(TRANSLATIONS[self.app_state.current_lang]["tab_clip"])
 
     def _on_preset_applied(self):
         # Refresh current profile preview hint
@@ -268,26 +268,26 @@ class MainWindow(ctk.CTk):
 
     # ================== QUEUE ACTION IMPLEMENTATIONS ==================
     def _add_to_queue(self) -> None:
-        url = self.state.url.strip()
+        url = self.app_state.url.strip()
         if not url:
-            messagebox.showwarning(TRANSLATIONS[self.state.current_lang]["lbl_dialog_warning_title"], TRANSLATIONS[self.state.current_lang]["lbl_dialog_warning_url"])
+            messagebox.showwarning(TRANSLATIONS[self.app_state.current_lang]["lbl_dialog_warning_title"], TRANSLATIONS[self.app_state.current_lang]["lbl_dialog_warning_url"])
             return
 
-        lang = self.state.current_lang
+        lang = self.app_state.current_lang
         # Gather active configurations from advanced panel
         item_cfg = self.advanced_panel.get_settings_dict()
         
         # Decide seek strategy if clipping is enabled
         clip_strategy = "stream_seek"
-        if item_cfg.get("clip_enabled") and self.state.current_video_info:
+        if item_cfg.get("clip_enabled") and self.app_state.current_video_info:
             start = parse_time_to_seconds(item_cfg.get("clip_start", "00:00")) or 0.0
             end = parse_time_to_seconds(item_cfg.get("clip_end", "00:00")) or 0.0
-            clip_strategy = decide_clip_strategy(self.state.current_video_info, start, end)
+            clip_strategy = decide_clip_strategy(self.app_state.current_video_info, start, end)
 
-        if self.state.is_batch_mode:
+        if self.app_state.is_batch_mode:
             # Multi-line batch processing
             added_count = 0
-            for raw_url in self.state.batch_urls:
+            for raw_url in self.app_state.batch_urls:
                 if raw_url.startswith(("http://", "https://")):
                     item_id = hashlib.md5(raw_url.encode()).hexdigest()
                     item = {
@@ -300,15 +300,15 @@ class MainWindow(ctk.CTk):
                         "clip_strategy": clip_strategy
                     }
                     item.update(item_cfg)
-                    self.state.queue_list.append(item)
+                    self.app_state.queue_list.append(item)
                     added_count += 1
             
             self.url_panel.set_url("")
-            self.progress_panel.update_status("●", THEME_ACCENT_BLUE, TRANSLATIONS[self.state.current_lang]["lbl_status_added"].format(count=added_count))
+            self.progress_panel.update_status("●", THEME_ACCENT_BLUE, TRANSLATIONS[self.app_state.current_lang]["lbl_status_added"].format(count=added_count))
         else:
             # Single item queueing
-            title = self.state.current_video_info.get("title", "Video Title") if self.state.current_video_info else "Downloading video"
-            duration = format_seconds_to_mmss(self.state.current_video_info.get("duration", 0)) if self.state.current_video_info else "00:00"
+            title = self.app_state.current_video_info.get("title", "Video Title") if self.app_state.current_video_info else "Downloading video"
+            duration = format_seconds_to_mmss(self.app_state.current_video_info.get("duration", 0)) if self.app_state.current_video_info else "00:00"
             item_id = hashlib.md5(url.encode()).hexdigest()
             
             item = {
@@ -321,27 +321,27 @@ class MainWindow(ctk.CTk):
                 "clip_strategy": clip_strategy
             }
             item.update(item_cfg)
-            self.state.queue_list.append(item)
+            self.app_state.queue_list.append(item)
             
             self.url_panel.set_url("")
             self.preview_panel.hide()
-            self.progress_panel.update_status("●", THEME_ACCENT_BLUE, TRANSLATIONS[self.state.current_lang]["lbl_status_ready"])
+            self.progress_panel.update_status("●", THEME_ACCENT_BLUE, TRANSLATIONS[self.app_state.current_lang]["lbl_status_ready"])
 
         self.queue_panel.update_list()
 
     def _remove_from_queue(self, idx: int):
-        if idx >= 0 and idx < len(self.state.queue_list):
-            item = self.state.queue_list[idx]
+        if idx >= 0 and idx < len(self.app_state.queue_list):
+            item = self.app_state.queue_list[idx]
             # Don't delete active downloading item
             if "İndir" in item["status"] or "Down" in item["status"] or "Desc" in item["status"]:
                 return
-            del self.state.queue_list[idx]
+            del self.app_state.queue_list[idx]
             self.queue_panel.update_list()
 
     def _redownload_historic_item(self, url: str, format_desc: str):
         # Feature 3.2: Re-download callback
         self.url_panel.set_url(url)
-        self.state.url = url
+        self.app_state.url = url
         # Toggle mode based on history format description
         if "Audio" in format_desc or "mp3" in format_desc:
             self.advanced_panel.mode_var.set("Audio")
@@ -350,42 +350,42 @@ class MainWindow(ctk.CTk):
         self.advanced_panel._on_mode_changed(self.advanced_panel.mode_var.get())
         
         # Trigger queue panel tab view switch back to Active Queue
-        self.queue_panel.tab_selector.set(TRANSLATIONS[self.state.current_lang]["tab_active"])
-        self.queue_panel._on_tab_changed(TRANSLATIONS[self.state.current_lang]["tab_active"])
+        self.queue_panel.tab_selector.set(TRANSLATIONS[self.app_state.current_lang]["tab_active"])
+        self.queue_panel._on_tab_changed(TRANSLATIONS[self.app_state.current_lang]["tab_active"])
         
         # Auto-trigger preview metadata fetch
         self._trigger_metadata_fetch()
 
     # ================== RUN EXECUTION ACTIONS ==================
     def _start_download(self) -> None:
-        if self.state.is_executor_running:
-            messagebox.showinfo(TRANSLATIONS[self.state.current_lang]["lbl_dialog_info_title"], TRANSLATIONS[self.state.current_lang]["lbl_dialog_info_running"])
+        if self.app_state.is_executor_running:
+            messagebox.showinfo(TRANSLATIONS[self.app_state.current_lang]["lbl_dialog_info_title"], TRANSLATIONS[self.app_state.current_lang]["lbl_dialog_info_running"])
             return
 
         # Auto queue URL input if queue list empty
-        if not self.state.queue_list:
-            url = self.state.url.strip()
+        if not self.app_state.queue_list:
+            url = self.app_state.url.strip()
             if url:
                 self._add_to_queue()
             else:
-                messagebox.showwarning(TRANSLATIONS[self.state.current_lang]["lbl_dialog_warning_title"], TRANSLATIONS[self.state.current_lang]["lbl_dialog_warning_url"])
+                messagebox.showwarning(TRANSLATIONS[self.app_state.current_lang]["lbl_dialog_warning_title"], TRANSLATIONS[self.app_state.current_lang]["lbl_dialog_warning_url"])
                 return
 
         self.cancel_event.clear()
-        self.state.current_item_index = 0
+        self.app_state.current_item_index = 0
         self.progress_panel.set_running_state(True)
         
         # Spawn queue background execution worker thread
-        threading.Thread(target=run_queue_executor, args=(self.state, self.ui_queue, self.cancel_event), daemon=True).start()
+        threading.Thread(target=run_queue_executor, args=(self.app_state, self.ui_queue, self.cancel_event), daemon=True).start()
 
     def _cancel_download(self):
         self.cancel_event.set()
-        self.progress_panel.update_status("●", THEME_ACCENT_RED, TRANSLATIONS[self.state.current_lang]["lbl_status_cancelled"])
+        self.progress_panel.update_status("●", THEME_ACCENT_RED, TRANSLATIONS[self.app_state.current_lang]["lbl_status_cancelled"])
         self.progress_panel.set_running_state(False)
 
     def _open_output_dir(self):
         # Bug Fix 3: Cross-platform output directory opening (Windows, macOS, Linux)
-        path = Path(self.state.output_dir).expanduser()
+        path = Path(self.app_state.output_dir).expanduser()
         path.mkdir(parents=True, exist_ok=True)
         
         system = platform.system()
@@ -431,23 +431,23 @@ class MainWindow(ctk.CTk):
                 self.preview_panel.show_error()
             elif kind == "toast_outdated":
                 # Bug Fix 2: Outdated warning trigger display
-                self._show_toast(TRANSLATIONS[self.state.current_lang]["lbl_toast_outdated_title"], TRANSLATIONS[self.state.current_lang]["lbl_toast_outdated_desc"])
+                self._show_toast(TRANSLATIONS[self.app_state.current_lang]["lbl_toast_outdated_title"], TRANSLATIONS[self.app_state.current_lang]["lbl_toast_outdated_desc"])
             elif kind == "toast_success":
-                self._show_toast(TRANSLATIONS[self.state.current_lang]["lbl_toast_success_title"], TRANSLATIONS[self.state.current_lang]["lbl_toast_success_desc"].format(title=payload))
+                self._show_toast(TRANSLATIONS[self.app_state.current_lang]["lbl_toast_success_title"], TRANSLATIONS[self.app_state.current_lang]["lbl_toast_success_desc"].format(title=payload))
             elif kind == "toast_cancel":
-                self._show_toast(TRANSLATIONS[self.state.current_lang]["lbl_dialog_close_title"], f"Download queue cancelled for '{payload}'")
+                self._show_toast(TRANSLATIONS[self.app_state.current_lang]["lbl_dialog_close_title"], f"Download queue cancelled for '{payload}'")
             elif kind == "toast_error":
                 err_data = payload
-                self._show_toast(TRANSLATIONS[self.state.current_lang]["lbl_toast_err_title"], TRANSLATIONS[self.state.current_lang]["lbl_toast_err_desc"].format(code=err_data["code"], title=err_data["title"]))
+                self._show_toast(TRANSLATIONS[self.app_state.current_lang]["lbl_toast_err_title"], TRANSLATIONS[self.app_state.current_lang]["lbl_toast_err_desc"].format(code=err_data["code"], title=err_data["title"]))
             elif kind == "queue_done":
                 self.progress_panel.set_running_state(False)
-                self.progress_panel.active_file_var.set(TRANSLATIONS[self.state.current_lang]["lbl_active_dl"])
+                self.progress_panel.active_file_var.set(TRANSLATIONS[self.app_state.current_lang]["lbl_active_dl"])
                 
                 if self.cancel_event.is_set():
-                    self.progress_panel.update_status("●", THEME_ACCENT_RED, TRANSLATIONS[self.state.current_lang]["lbl_status_cancelled"])
+                    self.progress_panel.update_status("●", THEME_ACCENT_RED, TRANSLATIONS[self.app_state.current_lang]["lbl_status_cancelled"])
                 else:
-                    self.progress_panel.update_status("●", THEME_ACCENT_GREEN, TRANSLATIONS[self.state.current_lang]["lbl_status_completed"])
-                    self._show_toast(TRANSLATIONS[self.state.current_lang]["lbl_toast_all_title"], TRANSLATIONS[self.state.current_lang]["lbl_toast_all_desc"])
+                    self.progress_panel.update_status("●", THEME_ACCENT_GREEN, TRANSLATIONS[self.app_state.current_lang]["lbl_status_completed"])
+                    self._show_toast(TRANSLATIONS[self.app_state.current_lang]["lbl_toast_all_title"], TRANSLATIONS[self.app_state.current_lang]["lbl_toast_all_desc"])
 
         self.after(100, self._drain_ui_queue)
 
@@ -456,24 +456,24 @@ class MainWindow(ctk.CTk):
         messagebox.showinfo(title, desc)
 
     def _toggle_theme_mode(self):
-        if self.state.current_theme == "Dark":
-            self.state.current_theme = "Light"
+        if self.app_state.current_theme == "Dark":
+            self.app_state.current_theme = "Light"
             ctk.set_appearance_mode("Light")
-            self.theme_btn.configure(text=TRANSLATIONS[self.state.current_lang]["theme_light"])
+            self.theme_btn.configure(text=TRANSLATIONS[self.app_state.current_lang]["theme_light"])
         else:
-            self.state.current_theme = "Dark"
+            self.app_state.current_theme = "Dark"
             ctk.set_appearance_mode("Dark")
-            self.theme_btn.configure(text=TRANSLATIONS[self.state.current_lang]["theme_dark"])
+            self.theme_btn.configure(text=TRANSLATIONS[self.app_state.current_lang]["theme_dark"])
 
     def _toggle_language(self, choice: str):
-        self.state.current_lang = choice.lower()
-        lang = self.state.current_lang
+        self.app_state.current_lang = choice.lower()
+        lang = self.app_state.current_lang
         
         # Update Header Card labels
         self.title_lbl.configure(text=TRANSLATIONS[lang]["title"])
         self.subtitle_lbl.configure(text=TRANSLATIONS[lang]["subtitle"])
         self.theme_btn.configure(
-            text=TRANSLATIONS[lang]["theme_dark"] if self.state.current_theme == "Dark" else TRANSLATIONS[lang]["theme_light"]
+            text=TRANSLATIONS[lang]["theme_dark"] if self.app_state.current_theme == "Dark" else TRANSLATIONS[lang]["theme_light"]
         )
 
         # Refresh all sub-panels' translations dynamically
@@ -484,8 +484,8 @@ class MainWindow(ctk.CTk):
         self.progress_panel.refresh_translations()
 
     def _on_close(self):
-        if self.state.is_executor_running:
-            if not messagebox.askyesno(TRANSLATIONS[self.state.current_lang]["lbl_dialog_close_title"], TRANSLATIONS[self.state.current_lang]["lbl_dialog_close_desc"]):
+        if self.app_state.is_executor_running:
+            if not messagebox.askyesno(TRANSLATIONS[self.app_state.current_lang]["lbl_dialog_close_title"], TRANSLATIONS[self.app_state.current_lang]["lbl_dialog_close_desc"]):
                 return
             self._cancel_download()
         

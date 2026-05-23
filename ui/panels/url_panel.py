@@ -9,14 +9,14 @@ from core.app_state import AppState
 class UrlPanel(ctk.CTkFrame):
     def __init__(self, parent, state: AppState, on_url_changed_callback, **kwargs):
         super().__init__(parent, fg_color="transparent", **kwargs)
-        self.state = state
+        self.app_state = state
         self.on_url_changed = on_url_changed_callback
         
         self.grid_columnconfigure(0, weight=1)
         self._build_ui()
 
     def _build_ui(self):
-        lang = self.state.current_lang
+        lang = self.app_state.current_lang
         
         # Header Row: Label & Paste Button & Switch
         header_row = ctk.CTkFrame(self, fg_color="transparent")
@@ -49,7 +49,7 @@ class UrlPanel(ctk.CTkFrame):
         )
         self.paste_btn.grid(row=0, column=1, padx=(0, 16), sticky="e")
 
-        self.batch_mode_var = ctk.BooleanVar(value=self.state.is_batch_mode)
+        self.batch_mode_var = ctk.BooleanVar(value=self.app_state.is_batch_mode)
         self.batch_mode_switch = ctk.CTkSwitch(
             header_row,
             text=TRANSLATIONS[lang]["batch_switch"],
@@ -83,7 +83,7 @@ class UrlPanel(ctk.CTkFrame):
             font=ctk.CTkFont(family="Segoe UI", size=12),
         )
         self.url_entry.grid(row=0, column=0, sticky="ew")
-        self.url_entry.insert(0, self.state.url)
+        self.url_entry.insert(0, self.app_state.url)
         self.url_entry.bind("<KeyRelease>", self._on_url_keyrelease)
 
         # Multi-line URL Input (hidden by default)
@@ -127,7 +127,7 @@ class UrlPanel(ctk.CTkFrame):
             font=ctk.CTkFont(family="Segoe UI", size=12),
         )
         self.output_entry.grid(row=0, column=0, padx=(0, 10), sticky="ew")
-        self.output_entry.insert(0, self.state.output_dir)
+        self.output_entry.insert(0, self.app_state.output_dir)
         self.output_entry.bind("<KeyRelease>", self._on_output_dir_keyrelease)
 
         self.browse_btn = ctk.CTkButton(
@@ -172,7 +172,7 @@ class UrlPanel(ctk.CTkFrame):
         else:
             self.url_entry.delete(0, "end")
             self.url_entry.insert(0, url_data)
-            self.state.url = url_data
+            self.app_state.url = url_data
             self.on_url_changed()
 
     def _paste_from_clipboard(self):
@@ -185,14 +185,14 @@ class UrlPanel(ctk.CTkFrame):
                 else:
                     self.url_entry.delete(0, "end")
                     self.url_entry.insert(0, clipboard)
-                    self.state.url = clipboard
+                    self.app_state.url = clipboard
                     self.on_url_changed()
         except Exception:
             pass
 
     def _toggle_batch_mode(self):
         is_batch = self.batch_mode_var.get()
-        self.state.is_batch_mode = is_batch
+        self.app_state.is_batch_mode = is_batch
         if is_batch:
             self.url_entry.grid_remove()
             self.url_textbox.grid()
@@ -206,37 +206,37 @@ class UrlPanel(ctk.CTkFrame):
             first_line = lines[0] if (lines and lines[0].strip()) else ""
             self.url_entry.delete(0, "end")
             self.url_entry.insert(0, first_line)
-            self.state.url = first_line
-            self.state.batch_urls = [l.strip() for l in lines if l.strip()]
+            self.app_state.url = first_line
+            self.app_state.batch_urls = [l.strip() for l in lines if l.strip()]
             self.on_url_changed()
 
     def _on_url_keyrelease(self, event):
-        self.state.url = self.url_entry.get().strip()
+        self.app_state.url = self.url_entry.get().strip()
         self.on_url_changed()
 
     def _on_textbox_change(self):
         lines = self.url_textbox.get("1.0", "end-1c").splitlines()
-        self.state.batch_urls = [l.strip() for l in lines if l.strip()]
-        if self.state.batch_urls:
-            self.state.url = self.state.batch_urls[0]
+        self.app_state.batch_urls = [l.strip() for l in lines if l.strip()]
+        if self.app_state.batch_urls:
+            self.app_state.url = self.app_state.batch_urls[0]
         else:
-            self.state.url = ""
+            self.app_state.url = ""
         self.on_url_changed()
 
     def _on_output_dir_keyrelease(self, event):
-        self.state.output_dir = self.output_entry.get().strip()
+        self.app_state.output_dir = self.output_entry.get().strip()
 
     def _pick_output_dir(self):
-        chosen = filedialog.askdirectory(initialdir=self.state.output_dir)
+        chosen = filedialog.askdirectory(initialdir=self.app_state.output_dir)
         if chosen:
-            self.state.output_dir = chosen
+            self.app_state.output_dir = chosen
             self.output_entry.delete(0, "end")
             self.output_entry.insert(0, chosen)
 
     def set_url(self, val: str):
         self.url_entry.delete(0, "end")
         self.url_entry.insert(0, val)
-        self.state.url = val
+        self.app_state.url = val
         if self.batch_mode_var.get():
             self.url_textbox.delete("1.0", "end")
             self.url_textbox.insert("1.0", val)
@@ -245,7 +245,7 @@ class UrlPanel(ctk.CTkFrame):
             self.on_url_changed()
 
     def refresh_translations(self):
-        lang = self.state.current_lang
+        lang = self.app_state.current_lang
         self.url_label.configure(text=TRANSLATIONS[lang]["url_label"])
         self.paste_btn.configure(text=TRANSLATIONS[lang]["paste_btn"])
         self.batch_mode_switch.configure(text=TRANSLATIONS[lang]["batch_switch"])

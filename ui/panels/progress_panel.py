@@ -18,7 +18,7 @@ class ProgressPanel(ctk.CTkFrame):
             corner_radius=16,
             **kwargs
         )
-        self.state = state
+        self.app_state = state
         self.on_start = on_start_callback
         self.on_cancel = on_cancel_callback
         self.on_open_folder = on_open_folder_callback
@@ -27,7 +27,7 @@ class ProgressPanel(ctk.CTkFrame):
         self._build_ui()
 
     def _build_ui(self):
-        lang = self.state.current_lang
+        lang = self.app_state.current_lang
 
         # Button Grid Frame
         btn_grid = ctk.CTkFrame(self, fg_color="transparent")
@@ -220,14 +220,14 @@ class ProgressPanel(ctk.CTkFrame):
     def _clear_logs_textbox(self):
         self.log_textbox.configure(state="normal")
         self.log_textbox.delete("1.0", "end")
-        self.state.terminal_logs.clear()
+        self.app_state.terminal_logs.clear()
 
     def append_log(self, text: str):
         self.log_textbox.configure(state="normal")
         self.log_textbox.insert("end", text)
         self.log_textbox.see("end")
         self.log_textbox.configure(state="disabled")
-        self.state.terminal_logs.append(text)
+        self.app_state.terminal_logs.append(text)
 
     def set_progress(self, percent: float):
         self.progress.set(percent)
@@ -251,7 +251,7 @@ class ProgressPanel(ctk.CTkFrame):
             self.cancel_btn.configure(state="disabled")
 
     def refresh_translations(self):
-        lang = self.state.current_lang
+        lang = self.app_state.current_lang
         self.start_btn.configure(text=TRANSLATIONS[lang]["btn_start"])
         self.cancel_btn.configure(text=TRANSLATIONS[lang]["btn_cancel"])
         self.clear_btn.configure(text=TRANSLATIONS[lang]["btn_clear"])

@@ -25,7 +25,7 @@ class QueuePanel(ctk.CTkFrame):
             corner_radius=16,
             **kwargs
         )
-        self.state = state
+        self.app_state = state
         self.on_remove_item = on_remove_item_callback
         self.on_redownload = on_redownload_callback
         
@@ -33,7 +33,7 @@ class QueuePanel(ctk.CTkFrame):
         self._build_ui()
 
     def _build_ui(self):
-        lang = self.state.current_lang
+        lang = self.app_state.current_lang
 
         # Segmented Control Tab Switcher
         self.tab_selector_var = ctk.StringVar(value="active")
@@ -81,7 +81,7 @@ class QueuePanel(ctk.CTkFrame):
 
     def _on_tab_changed(self, choice):
         # Determine tab kind based on string (tr/en/es segmented values)
-        lang = self.state.current_lang
+        lang = self.app_state.current_lang
         
         if choice == TRANSLATIONS[lang]["tab_history"]:
             self.tab_selector_var.set("history")
@@ -93,7 +93,7 @@ class QueuePanel(ctk.CTkFrame):
         self.update_list()
 
     def _clear_history_db(self):
-        lang = self.state.current_lang
+        lang = self.app_state.current_lang
         confirm = messagebox.askyesno(
             TRANSLATIONS[lang]["lbl_dialog_close_title"],
             "Tüm indirme geçmişini silmek istediğinize emin misiniz?" if lang == "tr" else "Are you sure you want to clear all history?"
@@ -108,11 +108,11 @@ class QueuePanel(ctk.CTkFrame):
             child.destroy()
 
         tab = self.tab_selector_var.get()
-        lang = self.state.current_lang
+        lang = self.app_state.current_lang
 
         if tab == "active":
             # RENDER ACTIVE QUEUE
-            if not self.state.queue_list:
+            if not self.app_state.queue_list:
                 placeholder = ctk.CTkLabel(
                     self.scroll_frame,
                     text=TRANSLATIONS[lang]["lbl_queue_item_placeholder"],
@@ -122,7 +122,7 @@ class QueuePanel(ctk.CTkFrame):
                 placeholder.grid(row=0, column=0, pady=40, sticky="ew")
                 return
 
-            for idx, item in enumerate(self.state.queue_list):
+            for idx, item in enumerate(self.app_state.queue_list):
                 card = ctk.CTkFrame(
                     self.scroll_frame,
                     fg_color=THEME_CARD_BG,
@@ -295,7 +295,7 @@ class QueuePanel(ctk.CTkFrame):
             subprocess.run(["xdg-open", str(path)])
 
     def refresh_translations(self):
-        lang = self.state.current_lang
+        lang = self.app_state.current_lang
         
         # Re-build Segmented button values to update translations
         active_tab_txt = TRANSLATIONS[lang]["tab_active"]

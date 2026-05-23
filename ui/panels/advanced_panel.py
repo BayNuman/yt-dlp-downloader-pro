@@ -21,7 +21,7 @@ class AdvancedPanel(ctk.CTkFrame):
             corner_radius=16,
             **kwargs
         )
-        self.state = state
+        self.app_state = state
         self.on_preset_loaded = on_preset_load_callback
         
         self.grid_columnconfigure(0, weight=1)
@@ -29,7 +29,7 @@ class AdvancedPanel(ctk.CTkFrame):
         self._load_presets_dropdown()
 
     def _build_ui(self):
-        lang = self.state.current_lang
+        lang = self.app_state.current_lang
 
         # Tabview Integration
         self.tabview = ctk.CTkTabview(
@@ -60,7 +60,7 @@ class AdvancedPanel(ctk.CTkFrame):
         self.lbl_mode = ctk.CTkLabel(c1, text=TRANSLATIONS[lang]["lbl_mode"], text_color=THEME_TEXT_PRIMARY)
         self.lbl_mode.grid(row=0, column=0, sticky="w", padx=6, pady=6)
         
-        self.mode_var = ctk.StringVar(value=self.state.active_profile if self.state.active_profile == "Audio" else "Video")
+        self.mode_var = ctk.StringVar(value=self.app_state.active_profile if self.app_state.active_profile == "Audio" else "Video")
         self.mode_switch = ctk.CTkSegmentedButton(
             c1,
             values=["Video", "Audio"],
@@ -277,9 +277,9 @@ class AdvancedPanel(ctk.CTkFrame):
         self.lbl_header_addons = ctk.CTkLabel(f1, text=TRANSLATIONS[lang]["lbl_header_addons"], font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color=THEME_ACCENT_BLUE)
         self.lbl_header_addons.grid(row=0, column=0, sticky="w", padx=6, pady=2)
 
-        self.thumbnail_var = tk.BooleanVar(value=self.state.thumbnail_flag)
-        self.subs_var = tk.BooleanVar(value=self.state.subtitle_flag)
-        self.auto_subs_var = tk.BooleanVar(value=self.state.auto_subtitle_flag)
+        self.thumbnail_var = tk.BooleanVar(value=self.app_state.thumbnail_flag)
+        self.subs_var = tk.BooleanVar(value=self.app_state.subtitle_flag)
+        self.auto_subs_var = tk.BooleanVar(value=self.app_state.auto_subtitle_flag)
 
         self.chk_thumb = ctk.CTkCheckBox(f1, text=TRANSLATIONS[lang]["chk_thumb"], variable=self.thumbnail_var, fg_color=THEME_ACCENT_INDIGO, text_color=THEME_TEXT_PRIMARY)
         self.chk_thumb.grid(row=1, column=0, padx=6, pady=4, sticky="w")
@@ -297,11 +297,11 @@ class AdvancedPanel(ctk.CTkFrame):
         self.lbl_header_behavior.grid(row=0, column=0, sticky="w", padx=6, pady=2)
 
         self.playlist_var = tk.BooleanVar(value=True)
-        self.metadata_var = tk.BooleanVar(value=self.state.metadata_flag)
-        self.restrict_names_var = tk.BooleanVar(value=self.state.restrict_filenames)
+        self.metadata_var = tk.BooleanVar(value=self.app_state.metadata_flag)
+        self.restrict_names_var = tk.BooleanVar(value=self.app_state.restrict_filenames)
         self.download_archive_var = tk.BooleanVar(value=True)
         self.youtube_403_fallback_var = tk.BooleanVar(value=True)
-        self.sponsorblock_var = tk.BooleanVar(value=self.state.sponsorblock_enabled)
+        self.sponsorblock_var = tk.BooleanVar(value=self.app_state.sponsorblock_enabled)
 
         self.chk_playlist = ctk.CTkCheckBox(f2, text=TRANSLATIONS[lang]["chk_playlist"], variable=self.playlist_var, fg_color=THEME_ACCENT_INDIGO, text_color=THEME_TEXT_PRIMARY)
         self.chk_playlist.grid(row=1, column=0, padx=6, pady=2, sticky="w")
@@ -328,7 +328,7 @@ class AdvancedPanel(ctk.CTkFrame):
         cl1.grid(row=0, column=0, columnspan=2, padx=16, pady=12, sticky="nsew")
         cl1.grid_columnconfigure(1, weight=1)
 
-        self.clip_enabled_var = tk.BooleanVar(value=self.state.clip_start != "")
+        self.clip_enabled_var = tk.BooleanVar(value=self.app_state.clip_start != "")
         self.chk_clip_enable = ctk.CTkCheckBox(
             cl1,
             text=TRANSLATIONS[lang]["lbl_clip_enable"],
@@ -455,7 +455,7 @@ class AdvancedPanel(ctk.CTkFrame):
         self.btn_delete_preset.grid(row=0, column=3, padx=6, pady=6, sticky="e")
 
     def _on_mode_changed(self, choice):
-        self.state.active_profile = "custom"
+        self.app_state.active_profile = "custom"
         if choice == "Audio":
             self.video_profile_menu.configure(state="disabled")
             self.video_limit_menu.configure(state="disabled")
@@ -476,7 +476,7 @@ class AdvancedPanel(ctk.CTkFrame):
             self.audio_quality_menu.configure(state="disabled")
 
     def _on_video_profile_changed(self, choice):
-        self.state.active_profile = "custom"
+        self.app_state.active_profile = "custom"
         if choice == "Ozel (Custom)":
             self.video_limit_menu.configure(state="normal")
         else:
@@ -496,8 +496,8 @@ class AdvancedPanel(ctk.CTkFrame):
             return
         
         duration = 0.0
-        if self.state.current_video_info:
-            duration = self.state.current_video_info.get("duration", 0.0)
+        if self.app_state.current_video_info:
+            duration = self.app_state.current_video_info.get("duration", 0.0)
 
         result = validate_clip_range(
             self.clip_start_var.get(),
@@ -664,7 +664,7 @@ class AdvancedPanel(ctk.CTkFrame):
         self.clip_precise_var.set(d.get("clip_precise", False))
 
     def refresh_translations(self):
-        lang = self.state.current_lang
+        lang = self.app_state.current_lang
         
         self.tabview.rename(TRANSLATIONS[lang]["tab_codecs"], TRANSLATIONS[lang]["tab_codecs"]) #CTk TabView has no clean rename, we will reconstruct tab texts dynamically in main_window.
         self.lbl_mode.configure(text=TRANSLATIONS[lang]["lbl_mode"])
