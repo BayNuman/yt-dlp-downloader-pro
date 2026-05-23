@@ -59,13 +59,28 @@ Supports **YouTube, Vimeo, SoundCloud, Twitter/X, Instagram, TikTok** and [1000+
 
 ## 📸 Screenshots
 
+### 🖥️ Desktop — Dark Mode
+
 <div align="center">
-
-| 🖥️ Desktop — Download Tab | 🖥️ Desktop — Settings | 📱 Android — Download | 📱 Android — History |
-|:---:|:---:|:---:|:---:|
-| *(coming soon)* | *(coming soon)* | *(coming soon)* | *(coming soon)* |
-
+<img src="assets/screenshots/desktop_dark_main.png" alt="Desktop Dark Mode — Main" width="49%"/> <img src="assets/screenshots/desktop_dark_settings.png" alt="Desktop Dark Mode — Advanced Settings" width="49%"/>
 </div>
+
+### 🖥️ Desktop — Light Mode
+
+<div align="center">
+<img src="assets/screenshots/desktop_light_main.png" alt="Desktop Light Mode — Main" width="49%"/> <img src="assets/screenshots/desktop_light_settings.jpg" alt="Desktop Light Mode — Advanced Settings" width="49%"/>
+</div>
+
+### 📱 Android
+
+<div align="center">
+<img src="assets/screenshots/android_dark.jpg" alt="Android — Download (Dark)" width="19%"/>
+<img src="assets/screenshots/android_queue.png" alt="Android — Queue" width="19%"/>
+<img src="assets/screenshots/android_history.png" alt="Android — History" width="19%"/>
+<img src="assets/screenshots/android_settings.png" alt="Android — Settings" width="19%"/>
+<img src="assets/screenshots/android_light.jpg" alt="Android — Download (Light)" width="19%"/>
+</div>
+
 
 ---
 
@@ -92,7 +107,6 @@ Supports **YouTube, Vimeo, SoundCloud, Twitter/X, Instagram, TikTok** and [1000+
 | ⚙️ Background Service | Foreground download service — continues in background |
 | 🔗 Share Intent | Share any URL directly from Chrome, Firefox, YouTube app |
 | 🔔 Permissions | Automatic onboarding at startup (storage + notifications) |
-| 📂 Open Folder | Direct access to download folder from settings |
 | 🌍 Languages | English, Turkish, Spanish |
 | 🎨 Design | Material 3 glassmorphic dark theme |
 | 📱 Compatibility | Android 8.0+ (API 26), ARM64 + x86_64 |
