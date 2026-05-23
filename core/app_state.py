@@ -40,6 +40,11 @@ class AppState:
     embed_chapters: bool = False
     concurrent_fragments: str = "3"
     
+    # Clip configurations
+    clip_start: str = ""
+    clip_end: str = ""
+    clip_precise: bool = False
+    
     # Diagnostic logs
     terminal_logs: List[str] = field(default_factory=list)
     
