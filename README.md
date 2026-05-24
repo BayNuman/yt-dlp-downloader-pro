@@ -158,6 +158,25 @@ Supports **YouTube, Vimeo, SoundCloud, Twitter/X, Instagram, TikTok** and [1000+
 
 ---
 
+## ⚠️ Windows SmartScreen Uyarısı Hakkında (Reputation Shield)
+
+### Neden Bu Uyarıyı Alıyorsunuz?
+Uygulamayı ilk indirdiğinizde Windows karşınıza mavi bir **"Windows kişisel bilgisayarınızı korudu"** ekranı çıkarabilir. Bu bir virüs uyarısı değil, Microsoft'un **İtibar (Repütasyon) Algoritmasının** bir sonucudur:
+
+1. **Dijital İmza (Sertifika) Yokluğu**: Windows Defender, geliştiricinin yıllık 500$ ödeyerek satın alması gereken EV Code Signing Sertifikasına sahip olmayan tüm yeni bağımsız yazılımları imzasız olduğu için otomatik olarak riskli sınıfına sokar.
+2. **SHA-256 Hash Filtresi**: Derlediğimiz yepyeni `.exe` dosyası henüz Microsoft telemetrilerine milyonlarca kez düşmediği için sistem gözünde "bilinmeyen" olarak işaretlenir.
+
+### 🛡️ Şeffaflık Taahhüdümüz ve Çözüm
+Bu proje **%100 açık kaynak kodludur**, ücretsizdir ve tüm kaynak kodları GitHub üzerinde şeffaf bir şekilde herkesin incelemesine sunulmuştur. Kod güvenliğinden emin olmak isteyen tüm yazılımcılar projeyi kendi bilgisayarında kaynak koddan manuel olarak derleyebilir.
+
+#### Kurulumu Tamamlamak İçin:
+1. Mavi SmartScreen ekranında yer alan **"Ek Bilgi" (More Info)** butonuna tıklayın.
+2. Açılan pencerede çıkan **"Yine de Çalıştır" (Run Anyway)** butonuna basarak kurulumu başlatın.
+
+> 💡 **Taşınabilir (Portable) Sürüm**: Inno Setup ile hazırlanan yükleyici (Installer), Program Files ve Registry üzerinde değişiklik yapma izni talep ettiği için Defender korumasına daha hızlı takılır. Eğer hiçbir kurulum yapmadan uygulamayı tek tıkla çalıştırmak isterseniz, Releases sayfamızdan **Portable (.exe)** sürümünü indirerek Defender radarından çok daha kolay geçebilirsiniz.
+
+---
+
 ## 🛠️ Building from Source
 
 ### Prerequisites — Desktop
