@@ -4,6 +4,10 @@ yt-dlp Downloader Pro - Desktop Entry Point
 A zero-config, premium glassmorphic media downloader powered by yt-dlp + ffmpeg.
 """
 
+from core.env import refresh_path_env
+# Refresh path environment variables on startup before importing anything else to pick up runtime updates like Deno
+refresh_path_env()
+
 from core.app_state import AppState
 from ui.main_window import MainWindow
 

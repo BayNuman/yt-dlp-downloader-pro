@@ -48,6 +48,12 @@ def main():
         "--name=yt-dlp Downloader Pro",                           # Output .exe name
         f"--add-data={ctk_dir}{separator}customtkinter",           # CustomTkinter theme assets
         f"--add-data=assets{separator}assets",                     # Glass background images
+        "--hidden-import=yt_dlp_ejs",                              # EJS challenge solver package
+        "--hidden-import=websockets",                              # Required by EJS solver
+        "--hidden-import=brotli",                                  # Optional performance compression
+        "--hidden-import=mutagen",                                 # Audio tags postprocessing
+        "--hidden-import=pycryptodomex",                           # Cryptographic signature support
+        "--hidden-import=requests",                                # Update queries and API requests
         "app.py"                                                   # Target script
     ]
     

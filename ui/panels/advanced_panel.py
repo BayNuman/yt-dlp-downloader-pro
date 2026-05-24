@@ -48,7 +48,6 @@ class AdvancedPanel(ctk.CTkFrame):
         self.tab_codec = self.tabview.add(TRANSLATIONS[lang]["tab_codecs"])
         self.tab_limits = self.tabview.add(TRANSLATIONS[lang]["tab_limits"])
         self.tab_flags = self.tabview.add(TRANSLATIONS[lang]["tab_flags"])
-        self.tab_clip = self.tabview.add(TRANSLATIONS[lang]["tab_clip"])
 
         # ==================== TAB 1: RESOLUTION & CODECS ====================
         self.tab_codec.grid_columnconfigure((0, 1), weight=1)
@@ -321,72 +320,7 @@ class AdvancedPanel(ctk.CTkFrame):
         self.chk_sponsorblock = ctk.CTkCheckBox(f2, text=TRANSLATIONS[lang]["chk_sponsorblock"], variable=self.sponsorblock_var, fg_color=THEME_ACCENT_INDIGO, text_color=THEME_TEXT_PRIMARY)
         self.chk_sponsorblock.grid(row=6, column=0, padx=6, pady=2, sticky="w")
 
-        # ==================== TAB 4: TIME RANGE & CLIP (SPRINT 3) ====================
-        self.tab_clip.grid_columnconfigure((0, 1), weight=1)
 
-        cl1 = ctk.CTkFrame(self.tab_clip, fg_color="transparent")
-        cl1.grid(row=0, column=0, columnspan=2, padx=16, pady=12, sticky="nsew")
-        cl1.grid_columnconfigure(1, weight=1)
-
-        self.clip_enabled_var = tk.BooleanVar(value=self.app_state.clip_start != "")
-        self.chk_clip_enable = ctk.CTkCheckBox(
-            cl1,
-            text=TRANSLATIONS[lang]["lbl_clip_enable"],
-            variable=self.clip_enabled_var,
-            fg_color=THEME_ACCENT_INDIGO,
-            text_color=THEME_TEXT_PRIMARY,
-            command=self._on_clip_toggled
-        )
-        self.chk_clip_enable.grid(row=0, column=0, columnspan=2, padx=6, pady=6, sticky="w")
-
-        self.lbl_clip_start = ctk.CTkLabel(cl1, text=TRANSLATIONS[lang]["lbl_clip_start"], text_color=THEME_TEXT_PRIMARY)
-        self.lbl_clip_start.grid(row=1, column=0, sticky="w", padx=6, pady=6)
-
-        self.clip_start_var = ctk.StringVar(value="00:00")
-        self.clip_start_entry = ctk.CTkEntry(
-            cl1,
-            textvariable=self.clip_start_var,
-            placeholder_text="00:00",
-            height=30,
-            fg_color=THEME_BG,
-            border_color=THEME_CARD_BORDER,
-            border_width=1,
-            text_color=THEME_TEXT_PRIMARY
-        )
-        self.clip_start_entry.grid(row=1, column=1, sticky="ew", padx=6, pady=6)
-        self.clip_start_var.trace_add("write", self._validate_clip_entries)
-
-        self.lbl_clip_end = ctk.CTkLabel(cl1, text=TRANSLATIONS[lang]["lbl_clip_end"], text_color=THEME_TEXT_PRIMARY)
-        self.lbl_clip_end.grid(row=2, column=0, sticky="w", padx=6, pady=6)
-
-        self.clip_end_var = ctk.StringVar(value="01:00")
-        self.clip_end_entry = ctk.CTkEntry(
-            cl1,
-            textvariable=self.clip_end_var,
-            placeholder_text="01:00",
-            height=30,
-            fg_color=THEME_BG,
-            border_color=THEME_CARD_BORDER,
-            border_width=1,
-            text_color=THEME_TEXT_PRIMARY
-        )
-        self.clip_end_entry.grid(row=2, column=1, sticky="ew", padx=6, pady=6)
-        self.clip_end_var.trace_add("write", self._validate_clip_entries)
-
-        self.clip_precise_var = tk.BooleanVar(value=False)
-        self.chk_clip_precise = ctk.CTkCheckBox(
-            cl1,
-            text=TRANSLATIONS[lang]["lbl_clip_precise"],
-            variable=self.clip_precise_var,
-            fg_color=THEME_ACCENT_INDIGO,
-            text_color=THEME_TEXT_PRIMARY
-        )
-        self.chk_clip_precise.grid(row=3, column=0, columnspan=2, padx=6, pady=6, sticky="w")
-
-        self.clip_validation_lbl = ctk.CTkLabel(cl1, text="", text_color=THEME_ACCENT_RED, font=ctk.CTkFont(family="Segoe UI", size=10))
-        self.clip_validation_lbl.grid(row=4, column=0, columnspan=2, padx=6, pady=2, sticky="w")
-
-        self._on_clip_toggled() # Disable entry fields by default if checkbox off
 
         # ==================== PRESETS DRAWER (FEATURE 3.3) ====================
         presets_card = ctk.CTkFrame(
@@ -482,38 +416,7 @@ class AdvancedPanel(ctk.CTkFrame):
         else:
             self.video_limit_menu.configure(state="disabled")
 
-    def _on_clip_toggled(self):
-        enabled = self.clip_enabled_var.get()
-        state_str = "normal" if enabled else "disabled"
-        self.clip_start_entry.configure(state=state_str)
-        self.clip_end_entry.configure(state=state_str)
-        self.chk_clip_precise.configure(state=state_str)
-        if not enabled:
-            self.clip_validation_lbl.configure(text="")
 
-    def _validate_clip_entries(self, *args):
-        if not self.clip_enabled_var.get():
-            return
-        
-        duration = 0.0
-        if self.app_state.current_video_info:
-            duration = self.app_state.current_video_info.get("duration", 0.0)
-
-        result = validate_clip_range(
-            self.clip_start_var.get(),
-            self.clip_end_var.get(),
-            duration
-        )
-        if isinstance(result, str):
-            self.clip_validation_lbl.configure(text=result, text_color=THEME_ACCENT_RED)
-        else:
-            # Valid range
-            start, end = result
-            diff = end - start
-            self.clip_validation_lbl.configure(
-                text=f"✓ Valid Clip Size: {format_seconds_to_mmss(diff)}",
-                text_color=THEME_TEXT_SECONDARY
-            )
 
     def _pick_cookies_file(self):
         chosen = filedialog.askopenfilename(
@@ -625,11 +528,7 @@ class AdvancedPanel(ctk.CTkFrame):
             "concurrent_fragments": "3",
             "cookies": self.cookies_var.get(),
             "browser_cookies": self.browser_cookies_var.get(),
-            "youtube_403": self.youtube_403_fallback_var.get(),
-            "clip_enabled": self.clip_enabled_var.get(),
-            "clip_start": self.clip_start_var.get(),
-            "clip_end": self.clip_end_var.get(),
-            "clip_precise": self.clip_precise_var.get()
+            "youtube_403": self.youtube_403_fallback_var.get()
         }
 
     def apply_settings_dict(self, d: dict):
@@ -657,11 +556,6 @@ class AdvancedPanel(ctk.CTkFrame):
         self.cookies_var.set(d.get("cookies", ""))
         self.browser_cookies_var.set(d.get("browser_cookies", "Kapali"))
         self.youtube_403_fallback_var.set(d.get("youtube_403", True))
-        self.clip_enabled_var.set(d.get("clip_enabled", False))
-        self._on_clip_toggled()
-        self.clip_start_var.set(d.get("clip_start", "00:00"))
-        self.clip_end_var.set(d.get("clip_end", "01:00"))
-        self.clip_precise_var.set(d.get("clip_precise", False))
 
     def refresh_translations(self):
         lang = self.app_state.current_lang
@@ -695,10 +589,7 @@ class AdvancedPanel(ctk.CTkFrame):
         self.chk_youtube_403.configure(text=TRANSLATIONS[lang]["chk_youtube_403"])
         self.chk_sponsorblock.configure(text=TRANSLATIONS[lang]["chk_sponsorblock"])
 
-        self.chk_clip_enable.configure(text=TRANSLATIONS[lang]["lbl_clip_enable"])
-        self.lbl_clip_start.configure(text=TRANSLATIONS[lang]["lbl_clip_start"])
-        self.lbl_clip_end.configure(text=TRANSLATIONS[lang]["lbl_clip_end"])
-        self.chk_clip_precise.configure(text=TRANSLATIONS[lang]["lbl_clip_precise"])
+
 
         self.lbl_presets.configure(text=TRANSLATIONS[lang]["lbl_preset_action"])
         self.btn_save_preset.configure(text=TRANSLATIONS[lang]["btn_save_preset"])

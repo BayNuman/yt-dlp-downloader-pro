@@ -32,9 +32,25 @@ def effective_video_height(item_config: dict) -> str:
     return selected
 
 def build_command(item: dict, output_dir: str) -> list[str]:
+    import tempfile
+    import json
+    
     out_dir = str(Path(output_dir).expanduser())
     output_template = item.get("output_template", "").strip() or DEFAULT_OUTPUT_TEMPLATE
     cmd: list[str] = [sys.executable, "-m", "yt_dlp", "--newline", "-P", out_dir, "-o", output_template]
+
+    # If pre-fetched metadata exists (Multi-Clip Single-Fetch), inject it to avoid double-fetching network calls
+    if "video_info" in item and item["video_info"]:
+        try:
+            # Create a temporary file to write cached JSON metadata
+            temp_json = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json", encoding="utf-8")
+            json.dump(item["video_info"], temp_json, ensure_ascii=False)
+            temp_json.close()
+            # Cache the temp path so downloader can clean it up
+            item["_temp_info_json"] = temp_json.name
+            cmd.extend(["--load-info-json", temp_json.name])
+        except Exception as e:
+            print(f"[warning] Failed to write --load-info-json temp file: {e}")
 
     mode = item.get("mode", "Video")
     if mode == "Video":

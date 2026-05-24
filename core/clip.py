@@ -71,3 +71,59 @@ def decide_clip_strategy(info: dict, start: float, end: float) -> str:
     else:
         # Large part -> full download + local trim
         return "full_trim"
+
+from dataclasses import dataclass
+from typing import List
+
+@dataclass
+class MicroClip:
+    id: str
+    start: float  # in seconds
+    end: float
+    export_profile: str
+    output_name: str
+
+@dataclass
+class MacroClip:
+    start: float
+    end: float
+    micro_clips: List[MicroClip]
+
+def optimize_clip_intervals(clips: List[MicroClip], threshold_sec: float = 30.0) -> List[MacroClip]:
+    """
+    Greedy Interval Merging Algorithm (LeetCode 56) to combine overlapping or near
+    clips to prevent redundant network I/O.
+    """
+    if not clips:
+        return []
+
+    # Sort clips chronologically by start time
+    sorted_clips = sorted(clips, key=lambda c: c.start)
+    
+    macro_clips = []
+    first_clip = sorted_clips[0]
+    
+    current_macro = MacroClip(
+        start=first_clip.start,
+        end=first_clip.end,
+        micro_clips=[first_clip]
+    )
+
+    for i in range(1, len(sorted_clips)):
+        next_clip = sorted_clips[i]
+        
+        # If next clip start is within threshold_sec of current macro's end, merge them!
+        if next_clip.start <= current_macro.end + threshold_sec:
+            current_macro.end = max(current_macro.end, next_clip.end)
+            current_macro.micro_clips.append(next_clip)
+        else:
+            # Sizable gap: close current macro and start a new one
+            macro_clips.append(current_macro)
+            current_macro = MacroClip(
+                start=next_clip.start,
+                end=next_clip.end,
+                micro_clips=[next_clip]
+            )
+            
+    macro_clips.append(current_macro)
+    return macro_clips

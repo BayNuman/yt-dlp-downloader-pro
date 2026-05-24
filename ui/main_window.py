@@ -17,7 +17,7 @@ from PIL import Image, ImageTk
 from core.app_state import AppState
 from core.downloader import run_queue_executor, resolve_ffmpeg_path
 from core.history import init_db, add_download_record, get_all_downloads
-from core.clip import decide_clip_strategy
+from core.clip import decide_clip_strategy, parse_time_to_seconds, format_seconds_to_mmss
 
 # UI imports
 from ui.theme import (
@@ -49,8 +49,9 @@ class MainWindow(ctk.CTk):
 
         # Premium Glassmorphic Configuration
         self.title("yt-dlp Downloader Pro")
-        self.geometry("640x880")
-        self.resizable(False, False)
+        self.geometry("680x880")
+        self.resizable(True, True)
+        self.minsize(680, 850)
         
         self.configure(fg_color=THEME_BG)
         ctk.set_appearance_mode(self.app_state.current_theme)
@@ -71,8 +72,83 @@ class MainWindow(ctk.CTk):
         self._build_header_card()
         self._build_panels()
         
+        # Start PyPI update checker silently in background
+        from core.updater import UpdateChecker
+        self.updater = UpdateChecker(ui_callback=self._on_update_found)
+        self.updater.check_in_background()
+
         # Start the async UI metric queue draining loop
         self._drain_ui_queue()
+
+        # Check and prompt to install JS runtime Deno dynamically after a 2-second UI load buffer
+        self.after(2000, self._check_and_prompt_deno)
+
+    def _check_and_prompt_deno(self) -> None:
+        import shutil
+        from core.env import refresh_path_env
+        
+        refresh_path_env()
+        if shutil.which('deno') or shutil.which('node'):
+            return  # Already installed!
+            
+        lang = self.app_state.current_lang
+        title = "Sistem Gereksinimi" if lang == "tr" else ("Requisito del Sistema" if lang == "es" else "System Requirement")
+        msg = (
+            "YouTube videolarını yüksek hızda ve sınırsız formatta indirebilmek için gerekli olan şifre çözme motoru (Deno) bilgisayarınızda bulunamadı.\n\n"
+            "Arka planda otomatik olarak kurulmasını ister misiniz?"
+        ) if lang == "tr" else (
+            "No se encontró el motor de descifrado (Deno) necesario para descargar videos de YouTube a alta velocidad.\n\n"
+            "¿Desea instalarlo automáticamente en segundo plano?"
+        ) if lang == "es" else (
+            "The decryption engine (Deno) required to download YouTube videos at high speed was not found on your system.\n\n"
+            "Would you like to install it automatically in the background?"
+        )
+        
+        from tkinter import messagebox
+        if messagebox.askyesno(title, msg):
+            def installer_thread():
+                try:
+                    import subprocess
+                    startupinfo = None
+                    if os.name == 'nt':
+                        startupinfo = subprocess.STARTUPINFO()
+                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    
+                    # Execute Winget install
+                    subprocess.run(
+                        ["winget", "install", "DenoLand.Deno", "--scope", "user", "--accept-package-agreements", "--accept-source-agreements"],
+                        startupinfo=startupinfo,
+                        capture_output=True,
+                        text=True,
+                        check=True
+                    )
+                    
+                    # Refresh PATH
+                    refresh_path_env()
+                    
+                    if shutil.which('deno'):
+                        self.after(0, lambda: messagebox.showinfo(
+                            "Kurulum Başarılı" if lang == "tr" else ("Instalación Exitosa" if lang == "es" else "Installation Successful"),
+                            "YouTube şifre çözme motoru (Deno) başarıyla kuruldu! Artık yüksek hızda indirebilirsiniz." if lang == "tr" else ("El motor de descifrado (Deno) se ha instalado correctamente." if lang == "es" else "Decryption engine (Deno) installed successfully!")
+                        ))
+                    else:
+                        self.after(0, lambda: messagebox.showwarning(
+                            "Kurulum Başarısız" if lang == "tr" else ("Instalación Fallida" if lang == "es" else "Installation Failed"),
+                            "Kurulum tamamlanamadı. Lütfen daha sonra tekrar deneyin veya Deno'yu manuel kurun." if lang == "tr" else ("No se pudo completar la instalación." if lang == "es" else "Installation could not be completed.")
+                        ))
+                except FileNotFoundError:
+                    self.after(0, lambda: messagebox.showwarning(
+                        "Paket Yöneticisi Bulunamadı" if lang == "tr" else ("Package Manager Not Found" if lang == "es" else "Package Manager Not Found"),
+                        "Windows Paket Yöneticisi (winget) bulunamadı. Lütfen Deno'yu https://deno.com/ adresinden manuel olarak kurun." if lang == "tr" else "Windows Package Manager (winget) was not found. Please install Deno manually."
+                    ))
+                except Exception as e:
+                    print(f"Deno auto-install failed: {e}")
+                    self.after(0, lambda: messagebox.showwarning(
+                        "Kurulum Başarısız" if lang == "tr" else ("Instalación Fallida" if lang == "es" else "Installation Failed"),
+                        f"Deno kurulumu sırasında hata oluştu: {e}\nLütfen Deno'yu manuel olarak kurun." if lang == "tr" else f"Error during installation: {e}"
+                    ))
+                    
+            threading.Thread(target=installer_thread, daemon=True).start()
 
     def _build_header_card(self):
         lang = self.app_state.current_lang
@@ -149,6 +225,19 @@ class MainWindow(ctk.CTk):
         self.lang_menu.grid(row=0, column=1, padx=4, pady=4, sticky="e")
         self.lang_menu.set(lang.upper())
 
+        # Hidden update warning button
+        self.btn_update_warning = ctk.CTkButton(
+            header_card,
+            text="",
+            fg_color="#dc2626",
+            hover_color="#b91c1c",
+            text_color="#ffffff",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            command=self.perform_update,
+            height=32,
+            corner_radius=8
+        )
+
     def _build_panels(self):
         # 1. URL Panel (Inputs)
         self.url_panel = UrlPanel(self.main_scroll, self.app_state, self._trigger_metadata_fetch)
@@ -196,13 +285,29 @@ class MainWindow(ctk.CTk):
 
     def _run_metadata_fetch(self, url: str) -> None:
         try:
+            # 1. Dynamically refresh PATH to pick up newly installed runtimes like Deno without rebooting
+            from core.env import refresh_path_env
+            refresh_path_env()
+
             import yt_dlp
+            
+            # 2. Extract current cookie settings from AdvancedPanel to support private or throttled videos
+            settings = self.advanced_panel.get_settings_dict()
+            cookies_file = settings.get("cookies", "").strip()
+            browser_cookies = settings.get("browser_cookies", "").strip().lower()
+
             # We skip downloading, but extract full details (including chapters and formats)
             ydl_opts = {
                 'skip_download': True,
                 'quiet': True,
                 'no_warnings': True,
             }
+            
+            if cookies_file:
+                ydl_opts['cookiefile'] = cookies_file
+            elif browser_cookies and browser_cookies not in ("kapali", "disabled", "off", "closed", "none"):
+                ydl_opts['cookiesfrombrowser'] = (browser_cookies,)
+
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
 
@@ -252,15 +357,10 @@ class MainWindow(ctk.CTk):
             self.ui_queue.put(("metadata_error", str(e)))
 
     def _on_chapter_clicked(self, start_seconds: float, end_seconds: float, chapter_title: str):
-        # Feature 3.4 Chapters auto-clipping selection integration
-        self.advanced_panel.clip_enabled_var.set(True)
-        self.advanced_panel.clip_start_var.set(format_seconds_to_mmss(start_seconds))
-        self.advanced_panel.clip_end_var.set(format_seconds_to_mmss(end_seconds))
-        self.advanced_panel._on_clip_toggled()
-        self.advanced_panel._validate_clip_entries()
-        
-        # Focus on advanced panel
-        self.advanced_panel.tabview.set(TRANSLATIONS[self.app_state.current_lang]["tab_clip"])
+        # Feature 3.4 Chapters auto-clipping selection integration directly inside PreviewPanel
+        self.preview_panel.clip_enabled_var.set(True)
+        self.preview_panel._on_clip_toggled()
+        self.preview_panel.add_clip_row(start_seconds, end_seconds)
 
     def _on_preset_applied(self):
         # Refresh current profile preview hint
@@ -276,6 +376,45 @@ class MainWindow(ctk.CTk):
         lang = self.app_state.current_lang
         # Gather active configurations from advanced panel
         item_cfg = self.advanced_panel.get_settings_dict()
+        
+        # Merge clipping parameters directly from PreviewPanel if not in batch mode
+        if not self.app_state.is_batch_mode:
+            item_cfg.update(self.preview_panel.get_clip_settings())
+        else:
+            # Batch mode does not support active single-video clipping parameters
+            item_cfg.update({
+                "clip_enabled": False,
+                "clip_start": "00:00",
+                "clip_end": "00:00",
+                "clip_precise": False,
+                "export_profile": "Default (No Profile)"
+            })
+            
+        # If clipping is enabled, check for export profiles duration boundaries
+        if item_cfg.get("clip_enabled") and not self.app_state.is_batch_mode:
+            from core.profiles import EXPORT_PROFILES
+            
+            multi_clips = self.preview_panel.get_multi_clips()
+            for mc_cfg in multi_clips:
+                profile_name = mc_cfg.get("profile", "Default (No Profile)")
+                profile = EXPORT_PROFILES.get(profile_name)
+                diff = mc_cfg["end"] - mc_cfg["start"]
+                
+                if profile and profile.max_duration and diff > profile.max_duration:
+                    error_msg = (
+                        f"Seçilen kırpma süresi ({diff:.1f}s), '{profile.name}' profilinin "
+                        f"maksimum sınırını ({profile.max_duration}s) aşıyor! Lütfen süreyi kısaltın."
+                        if lang == "tr"
+                        else (
+                            f"El tiempo seleccionado ({diff:.1f}s) supera el límite máximo "
+                            f"del perfil '{profile.name}' ({profile.max_duration}s). Por favor acórtelo."
+                            if lang == "es"
+                            else f"Selected clip duration ({diff:.1f}s) exceeds '{profile.name}' "
+                                 f"profile maximum limit ({profile.max_duration}s)! Please shorten the clip."
+                        )
+                    )
+                    messagebox.showwarning(TRANSLATIONS[self.app_state.current_lang]["lbl_dialog_warning_title"], error_msg)
+                    return
         
         # Decide seek strategy if clipping is enabled
         clip_strategy = "stream_seek"
@@ -307,25 +446,97 @@ class MainWindow(ctk.CTk):
             self.progress_panel.update_status("●", THEME_ACCENT_BLUE, TRANSLATIONS[self.app_state.current_lang]["lbl_status_added"].format(count=added_count))
         else:
             # Single item queueing
-            title = self.app_state.current_video_info.get("title", "Video Title") if self.app_state.current_video_info else "Downloading video"
-            duration = format_seconds_to_mmss(self.app_state.current_video_info.get("duration", 0)) if self.app_state.current_video_info else "00:00"
-            item_id = hashlib.md5(url.encode()).hexdigest()
+            title_base = self.app_state.current_video_info.get("title", "Video Title") if self.app_state.current_video_info else "Downloading video"
+            duration_total = self.app_state.current_video_info.get("duration", 0) if self.app_state.current_video_info else 0
+            duration = format_seconds_to_mmss(duration_total)
             
-            item = {
-                "id": item_id,
-                "url": url,
-                "title": title,
-                "duration": duration,
-                "preset": item_cfg.get("video_profile", "Custom"),
-                "status": "Bekliyor" if lang == "tr" else ("Esperando" if lang == "es" else "Waiting"),
-                "clip_strategy": clip_strategy
-            }
-            item.update(item_cfg)
-            self.app_state.queue_list.append(item)
-            
-            self.url_panel.set_url("")
-            self.preview_panel.hide()
-            self.progress_panel.update_status("●", THEME_ACCENT_BLUE, TRANSLATIONS[self.app_state.current_lang]["lbl_status_ready"])
+            # Check if Multi-Clip is active
+            multi_clips = self.preview_panel.get_multi_clips()
+            if multi_clips:
+                from core.clip import MicroClip, optimize_clip_intervals
+                micro_list = []
+                for i, c in enumerate(multi_clips):
+                    micro_list.append(MicroClip(
+                        id=f"clip_{i+1}",
+                        start=c["start"],
+                        end=c["end"],
+                        export_profile=c["profile"],
+                        output_name=f"_clip{i+1}"
+                    ))
+                
+                # LeetCode 56 Greedy Merging (threshold of 30s)
+                macro_list = optimize_clip_intervals(micro_list, threshold_sec=30.0)
+                
+                added_count = 0
+                for idx_macro, macro in enumerate(macro_list):
+                    item_id = hashlib.md5(f"{url}_{idx_macro}_{macro.start}_{macro.end}".encode()).hexdigest()
+                    macro_start_str = format_seconds_to_mmss(macro.start)
+                    macro_end_str = format_seconds_to_mmss(macro.end)
+                    
+                    macro_item = {
+                        "id": item_id,
+                        "url": url,
+                        "preset": item_cfg.get("video_profile", "Custom"),
+                        "status": "Bekliyor" if lang == "tr" else ("Esperando" if lang == "es" else "Waiting"),
+                        "video_info": self.app_state.current_video_info,  # Inject cached video_info for --load-info-json
+                        "merge_clips": self.preview_panel.merge_clips_var.get()
+                    }
+                    macro_item.update(item_cfg)
+                    
+                    if len(macro.micro_clips) > 1:
+                        macro_item.update({
+                            "title": f"{title_base} [Macro Clip {idx_macro+1}]",
+                            "duration": format_seconds_to_mmss(macro.end - macro.start),
+                            "clip_enabled": True,
+                            "clip_start": macro_start_str,
+                            "clip_end": macro_end_str,
+                            "clip_strategy": decide_clip_strategy(self.app_state.current_video_info, macro.start, macro.end),
+                            "macro_clips_data": [
+                                {
+                                    "start": mc.start,
+                                    "end": mc.end,
+                                    "profile": mc.export_profile,
+                                    "output_suffix": mc.output_name
+                                }
+                                for mc in macro.micro_clips
+                            ]
+                        })
+                    else:
+                        mc = macro.micro_clips[0]
+                        macro_item.update({
+                            "title": f"{title_base} (Clip {mc.id})",
+                            "duration": format_seconds_to_mmss(mc.end - mc.start),
+                            "clip_enabled": True,
+                            "clip_start": format_seconds_to_mmss(mc.start),
+                            "clip_end": format_seconds_to_mmss(mc.end),
+                            "clip_strategy": decide_clip_strategy(self.app_state.current_video_info, mc.start, mc.end),
+                            "export_profile": mc.export_profile,
+                        })
+                    
+                    self.app_state.queue_list.append(macro_item)
+                    added_count += 1
+                
+                self.url_panel.set_url("")
+                self.preview_panel.hide()
+                self.progress_panel.update_status("●", THEME_ACCENT_BLUE, TRANSLATIONS[self.app_state.current_lang]["lbl_status_added"].format(count=added_count))
+            else:
+                # Normal single item or clipping off
+                item_id = hashlib.md5(url.encode()).hexdigest()
+                item = {
+                    "id": item_id,
+                    "url": url,
+                    "title": title_base,
+                    "duration": duration,
+                    "preset": item_cfg.get("video_profile", "Custom"),
+                    "status": "Bekliyor" if lang == "tr" else ("Esperando" if lang == "es" else "Waiting"),
+                    "clip_strategy": clip_strategy
+                }
+                item.update(item_cfg)
+                self.app_state.queue_list.append(item)
+                
+                self.url_panel.set_url("")
+                self.preview_panel.hide()
+                self.progress_panel.update_status("●", THEME_ACCENT_BLUE, TRANSLATIONS[self.app_state.current_lang]["lbl_status_ready"])
 
         self.queue_panel.update_list()
 
@@ -433,7 +644,22 @@ class MainWindow(ctk.CTk):
                 # Bug Fix 2: Outdated warning trigger display
                 self._show_toast(TRANSLATIONS[self.app_state.current_lang]["lbl_toast_outdated_title"], TRANSLATIONS[self.app_state.current_lang]["lbl_toast_outdated_desc"])
             elif kind == "toast_success":
-                self._show_toast(TRANSLATIONS[self.app_state.current_lang]["lbl_toast_success_title"], TRANSLATIONS[self.app_state.current_lang]["lbl_toast_success_desc"].format(title=payload))
+                from ui.components.toast import ActionableToast
+                data = payload
+                title_text = data.get("title", "Video")
+                file_path = data.get("file_path", "")
+                
+                lang = self.app_state.current_lang
+                desc_text = TRANSLATIONS[lang]["lbl_toast_success_desc"].format(title=title_text)
+                
+                if file_path and os.path.exists(file_path):
+                    ActionableToast(
+                        self,
+                        title="İndirme Tamamlandı!" if lang == "tr" else ("¡Descarga Completada!" if lang == "es" else "Download Completed!"),
+                        file_path=file_path
+                    )
+                else:
+                    self._show_toast(TRANSLATIONS[lang]["lbl_toast_success_title"], desc_text)
             elif kind == "toast_cancel":
                 self._show_toast(TRANSLATIONS[self.app_state.current_lang]["lbl_dialog_close_title"], f"Download queue cancelled for '{payload}'")
             elif kind == "toast_error":
@@ -482,6 +708,46 @@ class MainWindow(ctk.CTk):
         self.advanced_panel.refresh_translations()
         self.queue_panel.refresh_translations()
         self.progress_panel.refresh_translations()
+
+    def _on_update_found(self, current, latest):
+        # Schedule the UI configuration inside the safe main event loop
+        self.after(0, lambda: self._show_update_badge(current, latest))
+
+    def _show_update_badge(self, current, latest):
+        lang = self.app_state.current_lang
+        btn_text = f"🚀 Motoru Güncelle / Update Core (v{latest})" if lang == "tr" else f"🚀 Update Core / Motoru Güncelle (v{latest})"
+        self.btn_update_warning.configure(text=btn_text)
+        self.btn_update_warning.grid(row=1, column=0, columnspan=2, padx=20, pady=(0, 16), sticky="ew")
+
+    def perform_update(self):
+        lang = self.app_state.current_lang
+        status_text = "Güncelleniyor... Lütfen bekleyin." if lang == "tr" else "Upgrading... Please wait."
+        self.btn_update_warning.configure(text=status_text, state="disabled")
+        
+        import subprocess
+        import sys
+        
+        creationflags = 0
+        if sys.platform == "win32":
+            creationflags = subprocess.CREATE_NO_WINDOW
+            
+        # Launch ghost upgrade subprocess without flashing black command windows
+        subprocess.Popen(
+            [sys.executable, "-m", "pip", "install", "-U", "yt-dlp"],
+            creationflags=creationflags
+        )
+        
+        # Schedule visual callback in 6 seconds
+        self.after(6000, self._on_upgrade_complete)
+
+    def _on_upgrade_complete(self):
+        lang = self.app_state.current_lang
+        success_text = "Güncelleme Tamamlandı! Yeniden Başlatın." if lang == "tr" else "Upgrade Finished! Please Restart."
+        self.btn_update_warning.configure(
+            text=success_text,
+            state="disabled",
+            fg_color="#10b981"
+        )
 
     def _on_close(self):
         if self.app_state.is_executor_running:
