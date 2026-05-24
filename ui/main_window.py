@@ -53,6 +53,19 @@ class MainWindow(ctk.CTk):
         self.resizable(True, True)
         self.minsize(680, 850)
         
+        # Load and set the high-fidelity window icon dynamically at runtime
+        logo_png_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "logo.png")
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            logo_png_path = os.path.join(sys._MEIPASS, "assets", "logo.png")
+            
+        if os.path.exists(logo_png_path):
+            try:
+                from PIL import ImageTk
+                icon_img = ImageTk.PhotoImage(file=logo_png_path)
+                self.wm_iconphoto(True, icon_img)
+            except Exception as e:
+                print(f"Failed to set window icon: {e}")
+        
         self.configure(fg_color=THEME_BG)
         ctk.set_appearance_mode(self.app_state.current_theme)
 

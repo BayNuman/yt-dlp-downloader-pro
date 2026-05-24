@@ -10,6 +10,8 @@ Compression=lzma2
 SolidCompression=yes
 DisableProgramGroupPage=yes
 DisableWelcomePage=no
+SetupIconFile=assets\logo.ico
+UninstallDisplayIcon={app}\yt-dlp Downloader Pro.exe
 
 [Files]
 ; Copy the compiled PyInstaller executable

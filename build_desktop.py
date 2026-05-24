@@ -54,6 +54,7 @@ def main():
         "--hidden-import=mutagen",                                 # Audio tags postprocessing
         "--hidden-import=pycryptodomex",                           # Cryptographic signature support
         "--hidden-import=requests",                                # Update queries and API requests
+        "--icon=assets/logo.ico",                                  # High-fidelity multi-resolution application logo
         "app.py"                                                   # Target script
     ]
     
