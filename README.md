@@ -14,6 +14,10 @@ powered by yt-dlp + ffmpeg — download videos, music and playlists from YouTube
 
 [🚀 Direct Download Setup (Windows)](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp_Downloader_Pro_Setup.exe) · [📱 Direct Download APK (Android)](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/app-debug.apk) · [🐛 Report Bug](https://github.com/BayNuman/yt-dlp-downloader-pro/issues/new?template=bug_report.md) · [💡 Request Feature](https://github.com/BayNuman/yt-dlp-downloader-pro/issues/new?template=feature_request.md)
 
+<br/>
+<img src="assets/screenshots/preview.gif" alt="yt-dlp Downloader Pro — Showcase Demo" width="90%" style="border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.35);"/>
+<p><i>Showcasing the premium glassmorphic UI, responsive double-handle range slider, chapters auto-clip selection, and fluent animations in action.</i></p>
+
 </div>
 
 ---
@@ -204,16 +208,58 @@ The APK will be in: `android/app/build/outputs/apk/debug/app-debug.apk`
 
 ---
 
-## 🏗️ Architecture
+## 🛠️ Under the Hood (System Architecture)
+
+**yt-dlp Downloader Pro** is built as an enterprise-grade desktop media pipeline rather than a simple command-line script wrapper. The backend features several highly advanced architectural systems designed to solve complex system engineering challenges:
+
+### 1. ✂️ Single-Fetch, Multiple-Extract (SFME) Multi-Clip Engine
+Running multiple download commands sequentially for clipping triggers YouTube's anti-spam algorithms, leading to **HTTP 429 (Too Many Requests)** bans. 
+* **Interval Merging Algorithm (LeetCode 56)**: The core analyzes all requested clips, automatically merging overlapping or adjacent boundaries within a $\Delta t_{threshold} = 30\text{s}$ threshold into a single **MacroClip**.
+* **Metadata Pre-injection**: The engine serializes the pre-fetched video JSON and feeds it directly into `yt_dlp` via `--load-info-json <path>`, completely bypassing double network handshakes.
+* **Lossless SSD-Speed Slicing**: The MacroClip stream is fanned out and sliced into individual micro-clips locally using `ffmpeg -c copy`. It runs instantly at hard-drive speed with **zero quality loss**.
+* **Lossless Concat Merger (`LosslessMerger`)**: If checked, fanned out micro-clips are combined back into a single unified summary video at SSD-speed using the ultra-fast FFmpeg Concat Demuxer.
+
+### 2. 🌐 Zero-Reboot Dynamic Path Reloader (`core/env.py`)
+To decrypt YouTube's dynamic `n` challenge signature without throttling down to 50KB/s, `yt-dlp` requires a JavaScript runtime (like Deno) on the system.
+* **Registry Crawler**: On startup and worker thread loops, `core/env.py` queries Windows registry PATH keys (`HKEY_CURRENT_USER\Environment` & `HKEY_LOCAL_MACHINE\System\...\Session Manager\Environment`) and scans local Winget packages.
+* **Hot Path Injection**: Dynamically updates Python's active `os.environ["PATH"]` on the fly. 
+* **Zero Reboot UX**: If Deno is missing, the app triggers a premium, non-blocking background `winget install DenoLand.Deno` silent installer. Deno is recognized and active inside the running worker threads *instantly* without requiring a terminal, IDE, or system reboot!
+
+### 3. 🧪 Polymorphic Export Profiles Layer (`core/profiles.py`)
+Decoupled polymorphic registry layer transforming raw video formats into target delivery outputs:
+* **Standard Profiles**: Preserves native container codecs.
+* **Size Bounded Solver**: Reads duration ($D$) and dynamically solves required average video/audio bitrates to enforce output files strictly below $25\text{MB}$ (Discord) or $16\text{MB}$ (WhatsApp) thresholds.
+* **Lanczos WebP/GIF Generator**: Re-encodes videos to silent high-fidelity `.gif` files at custom widths ($480\text{px}$) and frame rates ($15\text{fps}$).
+* **Vertical 9:16 Crop Converter**: Automatically applies center-cropping to standard 16:9 widescreen videos, converting them to mobile-ready vertical layouts for YouTube Shorts and Instagram Reels.
+
+### 4. 🧵 Asynchronous Thread-Safe I/O & Queue Management
+* **Worker Decoupling**: Decouples heavy network operations and ffmpeg processes from the Tkinter main UI event thread using `threading.Thread`.
+* **Metric Draining Loop**: Spawns non-blocking worker threads communicating with the UI through a thread-safe `queue.Queue`.
+* **State Management**: Centralized `AppState` dataclass maintains the active download state, enabling fluid, asynchronous, real-time logging and percentage updates without ever freezing or stuttering the glassmorphic desktop GUI.
+
+---
+
+## 🏗️ Codebase Structure
 
 ```
 yt-dlp-downloader-pro/
 │
 ├── 🖥️ Desktop (Python + CustomTkinter)
-│   ├── app.py                       # Main entry point & UI
-│   ├── build_desktop.py             # PyInstaller build script
-│   ├── build_full_distribution.py   # Full distribution builder
-│   └── installer.iss                # Inno Setup configuration
+│   ├── app.py                       # Lightweight Bootstrap Loader
+│   ├── core/
+│   │   ├── env.py                   # Dynamic Windows PATH Reloader
+│   │   ├── clip.py                  # Greedy Interval Merger & Decision Engine
+│   │   ├── command_builder.py       # Pure Command compiler & info-json Injector
+│   │   ├── downloader.py            # Asynchronous process runner & regex progress parser
+│   │   ├── profiles.py              # Polymorphic Export Profiles registry
+│   │   ├── merger.py                # Lossless FFmpeg Concat Demuxer
+│   │   ├── suggester.py             # Heuristic Format Profile Suggester
+│   │   ├── history.py               # SQLite Persistent Database client
+│   │   └── updater.py               # Silent PyPI daemon update checker
+│   └── ui/
+│       ├── theme.py                 # Premium glass theme & localized dictionaries (TR/EN/ES)
+│       ├── main_window.py           # MainWindow layout & dynamic Deno setup orchestrator
+│       └── panels/                  # Decoupled responsive grid view panels
 │
 └── 📱 Android (Kotlin + Jetpack Compose)
     └── android/
