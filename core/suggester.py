@@ -70,6 +70,4 @@ class SmartFormatSuggester:
 
         # Result selection
         best_format = max(scores, key=scores.get)
-        print(f"[Heuristic Suggester] Engine Scores: {scores} | Winner: {best_format}")
-        
         return best_format

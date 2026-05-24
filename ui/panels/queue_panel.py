@@ -12,11 +12,11 @@ from ui.theme import (
     THEME_TEXT_SECONDARY, THEME_ACCENT_BLUE, THEME_ACCENT_INDIGO,
     THEME_ACCENT_GREEN, THEME_ACCENT_RED, THEME_CARD_SUBTITLE, TRANSLATIONS
 )
-from core.app_state import AppState
+from core.app_state import AppState, TaskStatus
 from core.history import get_all_downloads, clear_all_downloads, delete_download
 
 class QueuePanel(ctk.CTkFrame):
-    def __init__(self, parent, state: AppState, on_remove_item_callback, on_redownload_callback, **kwargs):
+    def __init__(self, parent, state: AppState, on_remove_item_callback, on_redownload_callback, on_cancel_task_callback=None, **kwargs):
         super().__init__(
             parent,
             fg_color=THEME_CARD_BG,
@@ -28,6 +28,11 @@ class QueuePanel(ctk.CTkFrame):
         self.app_state = state
         self.on_remove_item = on_remove_item_callback
         self.on_redownload = on_redownload_callback
+        self.on_cancel_task = on_cancel_task_callback
+
+        # Dynamic trackers to allow high-performance in-memory progress updates
+        self.card_status_labels = {}
+        self.card_dot_labels = {}
         
         self.grid_columnconfigure(0, weight=1)
         self._build_ui()
@@ -102,6 +107,18 @@ class QueuePanel(ctk.CTkFrame):
             clear_all_downloads()
             self.update_list()
 
+    def update_task_progress(self, task_id: str, percent: float, speed: str, eta: str, size: str):
+        """High-performance direct in-memory widget text configuration."""
+        if task_id in self.card_status_labels:
+            lbl = self.card_status_labels[task_id]
+            lang = self.app_state.current_lang
+            active_str = "İndiriliyor" if lang == "tr" else ("Descargando" if lang == "es" else "Downloading")
+            lbl.configure(text=f"{active_str} ({percent:.1f}% - {speed})")
+
+            # Update dot color to active indigo dynamically
+            if task_id in self.card_dot_labels:
+                self.card_dot_labels[task_id].configure(text_color=THEME_ACCENT_INDIGO)
+
     def update_list(self):
         # Clear existing list UI widgets
         for child in self.scroll_frame.winfo_children():
@@ -111,6 +128,9 @@ class QueuePanel(ctk.CTkFrame):
         lang = self.app_state.current_lang
 
         if tab == "active":
+            self.card_status_labels.clear()
+            self.card_dot_labels.clear()
+
             # RENDER ACTIVE QUEUE
             if not self.app_state.queue_list:
                 placeholder = ctk.CTkLabel(
@@ -136,48 +156,69 @@ class QueuePanel(ctk.CTkFrame):
 
                 # Dot indicator color
                 dot_color = THEME_TEXT_SECONDARY
-                status_str = item.get("status", "Pending")
-                if "Wait" in status_str or "Bek" in status_str or "Pen" in status_str:
+                status_str = item.status
+                if item.status_code == TaskStatus.PENDING:
                     dot_color = THEME_ACCENT_BLUE
-                elif "İndir" in status_str or "Down" in status_str or "Desc" in status_str:
+                elif item.status_code == TaskStatus.DOWNLOADING:
                     dot_color = THEME_ACCENT_INDIGO
-                elif "Tamam" in status_str or "Comp" in status_str or "Exit" in status_str:
+                elif item.status_code == TaskStatus.COMPLETED:
                     dot_color = THEME_ACCENT_GREEN
-                elif "Hata" in status_str or "Err" in status_str or "Iptal" in status_str or "Canc" in status_str:
+                elif item.status_code in (TaskStatus.FAILED, TaskStatus.CANCELLED):
                     dot_color = THEME_ACCENT_RED
 
-                ctk.CTkLabel(card, text="●", text_color=dot_color, font=ctk.CTkFont(size=14)).grid(row=0, column=0, padx=(12, 6))
+                dot_lbl = ctk.CTkLabel(card, text="●", text_color=dot_color, font=ctk.CTkFont(size=14))
+                dot_lbl.grid(row=0, column=0, padx=(12, 6))
+                self.card_dot_labels[item.id] = dot_lbl
 
                 # Text Title
-                title_text = item.get("title", "Unknown Video")
-                if len(title_text) > 45:
-                    title_text = title_text[:42] + "..."
+                title_text = item.title
+                if len(title_text) > 40:
+                    title_text = title_text[:37] + "..."
                 title_lbl = ctk.CTkLabel(card, text=title_text, font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color=THEME_TEXT_PRIMARY, anchor="w")
                 title_lbl.grid(row=0, column=1, padx=6, pady=8, sticky="w")
 
                 # Format preset label badge
-                preset_name = item.get("preset", "Custom").upper()
+                preset_name = str(item.preset).upper()
                 badge_lbl = ctk.CTkLabel(card, text=f"[{preset_name}]", text_color=THEME_CARD_SUBTITLE, font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"))
                 badge_lbl.grid(row=0, column=2, padx=10)
 
                 # Status label
-                status_lbl = ctk.CTkLabel(card, text=status_str, font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), text_color=THEME_TEXT_SECONDARY)
-                status_lbl.grid(row=0, column=3, padx=10)
+                display_status = status_str
+                if item.status_code == TaskStatus.DOWNLOADING:
+                    display_status = f"{item.status} ({item.percent:.1f}% - {item.speed})"
 
-                # Remove Button (only active if not downloading/processing)
+                status_lbl = ctk.CTkLabel(card, text=display_status, font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), text_color=THEME_TEXT_SECONDARY)
+                status_lbl.grid(row=0, column=3, padx=10)
+                self.card_status_labels[item.id] = status_lbl
+
+                # Remove or Cancel Button based on active downloading state
+                is_active = item.status_code == TaskStatus.DOWNLOADING
+                if is_active and self.on_cancel_task:
+                    btn_text = TRANSLATIONS[lang]["btn_cancel"]
+                    btn_color = THEME_BG
+                    hover_color = THEME_ACCENT_RED
+                    text_color = THEME_ACCENT_RED
+                    cmd = lambda t_id=item.id: self.on_cancel_task(t_id)
+                else:
+                    btn_text = TRANSLATIONS[lang]["lbl_queue_remove"]
+                    btn_color = THEME_BG
+                    hover_color = THEME_ACCENT_RED
+                    text_color = THEME_TEXT_PRIMARY
+                    cmd = lambda i=idx: self.on_remove_item(i)
+
                 rem_btn = ctk.CTkButton(
                     card,
-                    text=TRANSLATIONS[lang]["lbl_queue_remove"],
-                    width=60,
+                    text=btn_text,
+                    width=75 if is_active else 60,
                     height=26,
-                    fg_color=THEME_BG,
-                    hover_color=THEME_ACCENT_RED,
-                    text_color=THEME_TEXT_PRIMARY,
+                    fg_color=btn_color,
+                    hover_color=hover_color,
+                    text_color=text_color,
                     border_color=THEME_CARD_BORDER,
                     border_width=1,
                     corner_radius=6,
                     font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
-                    command=lambda i=idx: self.on_remove_item(i)
+                    command=cmd
                 )
                 rem_btn.grid(row=0, column=4, padx=(6, 12))
 

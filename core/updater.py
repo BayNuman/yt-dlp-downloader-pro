@@ -32,9 +32,11 @@ class UpdateChecker:
                 data = json.loads(response.read().decode('utf-8'))
                 latest_version = data["info"]["version"]
 
-            # 3. Numeric comparisons (split release dates, e.g. '2024.03.10' -> (2024, 3, 10))
-            current_tuple = tuple(map(int, current_version.split('.')))
-            latest_tuple = tuple(map(int, latest_version.split('.')))
+            try:
+                current_tuple = tuple(int(x) for x in current_version.split('.') if x.isdigit())
+                latest_tuple = tuple(int(x) for x in latest_version.split('.') if x.isdigit())
+            except Exception:
+                return
 
             if latest_tuple > current_tuple:
                 # Upgrade found! Dispatch thread-safe callback

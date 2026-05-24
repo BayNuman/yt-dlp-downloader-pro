@@ -267,6 +267,27 @@ class AdvancedPanel(ctk.CTkFrame):
         self.retries_entry = ctk.CTkEntry(l2, textvariable=self.retries_var, placeholder_text="Ex: 10", height=30, fg_color=THEME_BG, border_color=THEME_CARD_BORDER, border_width=1, text_color=THEME_TEXT_PRIMARY)
         self.retries_entry.grid(row=2, column=1, sticky="ew", padx=6, pady=6)
 
+        # Max Concurrent Downloads Option Menu (1, 2, 3, 4, 5 parallel tasks)
+        self.lbl_max_workers = ctk.CTkLabel(l2, text="Maks. Eşzamanlı İndirme:" if lang == "tr" else ("Descargas Simultáneas:" if lang == "es" else "Max Parallel Downloads:"), text_color=THEME_TEXT_PRIMARY)
+        self.lbl_max_workers.grid(row=3, column=0, sticky="w", padx=6, pady=6)
+        
+        self.max_workers_var = ctk.StringVar(value=str(self.app_state.preferences.max_workers))
+        self.max_workers_menu = ctk.CTkOptionMenu(
+            l2,
+            values=["1", "2", "3", "4", "5"],
+            variable=self.max_workers_var,
+            fg_color=THEME_BG,
+            button_color=THEME_BG,
+            button_hover_color=THEME_CARD_BORDER,
+            text_color=THEME_TEXT_PRIMARY,
+            dropdown_fg_color=THEME_CARD_BG,
+            dropdown_hover_color=THEME_CARD_BORDER,
+            dropdown_text_color=THEME_TEXT_PRIMARY,
+            height=30,
+            command=self._on_max_workers_changed
+        )
+        self.max_workers_menu.grid(row=3, column=1, sticky="ew", padx=6, pady=6)
+
         # ==================== TAB 3: FLAGS & CHECKBOXES ====================
         self.tab_flags.grid_columnconfigure((0, 1), weight=1)
 
@@ -416,7 +437,11 @@ class AdvancedPanel(ctk.CTkFrame):
         else:
             self.video_limit_menu.configure(state="disabled")
 
-
+    def _on_max_workers_changed(self, choice):
+        try:
+            self.app_state.preferences.max_workers = int(choice)
+        except Exception:
+            pass
 
     def _pick_cookies_file(self):
         chosen = filedialog.askopenfilename(
@@ -528,7 +553,8 @@ class AdvancedPanel(ctk.CTkFrame):
             "concurrent_fragments": "3",
             "cookies": self.cookies_var.get(),
             "browser_cookies": self.browser_cookies_var.get(),
-            "youtube_403": self.youtube_403_fallback_var.get()
+            "youtube_403": self.youtube_403_fallback_var.get(),
+            "max_workers": int(self.max_workers_var.get())
         }
 
     def apply_settings_dict(self, d: dict):
@@ -556,6 +582,8 @@ class AdvancedPanel(ctk.CTkFrame):
         self.cookies_var.set(d.get("cookies", ""))
         self.browser_cookies_var.set(d.get("browser_cookies", "Kapali"))
         self.youtube_403_fallback_var.set(d.get("youtube_403", True))
+        self.max_workers_var.set(str(d.get("max_workers", 3)))
+        self.app_state.preferences.max_workers = int(self.max_workers_var.get())
 
     def refresh_translations(self):
         lang = self.app_state.current_lang
@@ -575,6 +603,7 @@ class AdvancedPanel(ctk.CTkFrame):
         self.lbl_cookie_file.configure(text=TRANSLATIONS[lang]["lbl_cookie_file"])
         self.lbl_browser_cookie.configure(text=TRANSLATIONS[lang]["lbl_browser_cookie"])
         self.lbl_retry.configure(text=TRANSLATIONS[lang]["lbl_retry"])
+        self.lbl_max_workers.configure(text="Maks. Eşzamanlı İndirme:" if lang == "tr" else ("Descargas Simultáneas:" if lang == "es" else "Max Parallel Downloads:"))
 
         self.lbl_header_addons.configure(text=TRANSLATIONS[lang]["lbl_header_addons"])
         self.chk_thumb.configure(text=TRANSLATIONS[lang]["chk_thumb"])

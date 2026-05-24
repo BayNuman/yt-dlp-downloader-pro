@@ -47,10 +47,10 @@ class MemeGifProfile(ExportProfile):
         super().__init__(name, "gif")
 
     def get_ffmpeg_args(self, duration_sec: float) -> List[str]:
-        # Output as silent high-quality loop gif with lanczos scaler
+        # Output as silent high-quality loop gif with split-palettegen-paletteuse filter pipeline
         return [
             "-an",
-            "-vf", "fps=15,scale=480:-1:flags=lanczos",
+            "-vf", "fps=15,scale=480:-1:flags=lanczos[x];[x]split[y][z];[y]palettegen[p];[z][p]paletteuse",
             "-f", "gif"
         ]
 
@@ -72,9 +72,9 @@ class CenterCropProfile(ExportProfile):
         super().__init__(name, "mp4", max_duration)
 
     def get_ffmpeg_args(self, duration_sec: float) -> List[str]:
-        # Standard 16:9 to 9:16 vertical crop, fast x264 encode
+        # Mathematical 16:9 to 9:16 vertical center crop with horizontal offset calculation
         return [
-            "-vf", "crop=ih*(9/16):ih",
+            "-vf", "crop=ih*(9/16):ih:(iw-ih*(9/16))/2:0",
             "-c:v", "libx264",
             "-preset", "veryfast",
             "-c:a", "copy"

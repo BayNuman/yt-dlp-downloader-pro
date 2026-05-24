@@ -3,6 +3,8 @@ import sqlite3
 import os
 import platform
 import time
+import queue
+import threading
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -22,9 +24,63 @@ def get_app_data_dir() -> Path:
 def get_db_path() -> Path:
     return get_app_data_dir() / "history.db"
 
-def init_db():
+def connect_db() -> sqlite3.Connection:
+    """Creates a database connection with high-performance concurrent WAL and busy timeouts."""
     db_path = get_db_path()
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=30.0)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+    except Exception:
+        pass
+    return conn
+
+class DatabaseWriter:
+    def __init__(self):
+        self._queue: queue.Queue = queue.Queue()
+        self._thread = threading.Thread(
+            target=self._worker, daemon=True, name="db-writer"
+        )
+        self._thread.start()
+
+    def _worker(self):
+        # Dedicated database worker thread - sequential lock-free writes
+        conn = connect_db()
+        while True:
+            try:
+                item = self._queue.get(timeout=1.0)
+                if item is None:  # Poison pill - exit
+                    break
+                fn, args, kwargs = item
+                fn(conn, *args, **kwargs)
+                conn.commit()
+            except queue.Empty:
+                continue
+            except Exception as e:
+                print(f"[DB Writer] SQL Write Error: {e}")
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    def submit(self, fn, *args, **kwargs):
+        """Dispatched from concurrent threads — non-blocking, asynchronous queue write"""
+        self._queue.put((fn, args, kwargs))
+
+    def shutdown(self):
+        """Gracefully terminates the background SQLite worker thread"""
+        self._queue.put(None)
+
+# Global Singleton Database Writer Instance
+_db_writer = DatabaseWriter()
+
+def init_db():
+    # Init db is run once synchronously at startup, before thread dispatchers
+    conn = connect_db()
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS downloads (
@@ -42,56 +98,65 @@ def init_db():
     conn.commit()
     conn.close()
 
-def add_download_record(item_id: str, title: str, url: str, format_desc: str, file_path: str, status: str, file_size: int = 0, duration: int = 0):
-    db_path = get_db_path()
-    conn = sqlite3.connect(str(db_path))
+# --- DB Write Worker Callbacks ---
+
+def _do_add_download_record(conn, item_id: str, title: str, url: str, format_desc: str, file_path: str, status: str, file_size: int, duration: int):
     cursor = conn.cursor()
-    try:
-        cursor.execute("""
-            INSERT OR REPLACE INTO downloads (id, title, url, format, file_path, status, downloaded_at, file_size_bytes, duration_seconds)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (item_id, title, url, format_desc, file_path, status, int(time.time()), file_size, duration))
-        conn.commit()
-    except Exception as e:
-        print(f"[!] SQLite Error: {e}")
-    finally:
-        conn.close()
+    cursor.execute("""
+        INSERT OR REPLACE INTO downloads (id, title, url, format, file_path, status, downloaded_at, file_size_bytes, duration_seconds)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (item_id, title, url, format_desc, file_path, status, int(time.time()), file_size, duration))
+
+def _do_update_download_status(conn, item_id: str, status: str, file_path: str = None, file_size: int = None, duration: int = None):
+    cursor = conn.cursor()
+    if file_path is not None or file_size is not None or duration is not None:
+        updates = ["status = ?"]
+        params = [status]
+        if file_path is not None:
+            updates.append("file_path = ?")
+            params.append(file_path)
+        if file_size is not None:
+            updates.append("file_size_bytes = ?")
+            params.append(file_size)
+        if duration is not None:
+            updates.append("duration_seconds = ?")
+            params.append(duration)
+        
+        params.append(item_id)
+        query = f"UPDATE downloads SET {', '.join(updates)} WHERE id = ?"
+        cursor.execute(query, tuple(params))
+    else:
+        cursor.execute("UPDATE downloads SET status = ? WHERE id = ?", (status, item_id))
+
+def _do_clear_all_downloads(conn):
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM downloads")
+
+def _do_delete_download(conn, item_id: str):
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM downloads WHERE id = ?", (item_id,))
+
+# --- Exposed Non-Blocking API ---
+
+def add_download_record(item_id: str, title: str, url: str, format_desc: str, file_path: str, status: str, file_size: int = 0, duration: int = 0):
+    _db_writer.submit(_do_add_download_record, item_id, title, url, format_desc, file_path, status, file_size, duration)
 
 def update_download_status(item_id: str, status: str, file_path: str = None, file_size: int = None, duration: int = None):
-    db_path = get_db_path()
-    conn = sqlite3.connect(str(db_path))
-    cursor = conn.cursor()
-    try:
-        if file_path is not None or file_size is not None or duration is not None:
-            # Build dynamic update
-            updates = ["status = ?"]
-            params = [status]
-            if file_path is not None:
-                updates.append("file_path = ?")
-                params.append(file_path)
-            if file_size is not None:
-                updates.append("file_size_bytes = ?")
-                params.append(file_size)
-            if duration is not None:
-                updates.append("duration_seconds = ?")
-                params.append(duration)
-            
-            params.append(item_id)
-            query = f"UPDATE downloads SET {', '.join(updates)} WHERE id = ?"
-            cursor.execute(query, tuple(params))
-        else:
-            cursor.execute("UPDATE downloads SET status = ? WHERE id = ?", (status, item_id))
-        conn.commit()
-    except Exception as e:
-        print(f"[!] SQLite Update Error: {e}")
-    finally:
-        conn.close()
+    _db_writer.submit(_do_update_download_status, item_id, status, file_path=file_path, file_size=file_size, duration=duration)
+
+def clear_all_downloads():
+    _db_writer.submit(_do_clear_all_downloads)
+
+def delete_download(item_id: str):
+    _db_writer.submit(_do_delete_download, item_id)
+
+# --- Direct Read API (Safe concurrently with WAL mode) ---
 
 def get_all_downloads() -> List[Dict[str, Any]]:
     db_path = get_db_path()
     if not db_path.exists():
         return []
-    conn = sqlite3.connect(str(db_path))
+    conn = connect_db()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     downloads = []
@@ -105,27 +170,3 @@ def get_all_downloads() -> List[Dict[str, Any]]:
     finally:
         conn.close()
     return downloads
-
-def clear_all_downloads():
-    db_path = get_db_path()
-    conn = sqlite3.connect(str(db_path))
-    cursor = conn.cursor()
-    try:
-        cursor.execute("DELETE FROM downloads")
-        conn.commit()
-    except Exception as e:
-        print(f"[!] SQLite Clear Error: {e}")
-    finally:
-        conn.close()
-
-def delete_download(item_id: str):
-    db_path = get_db_path()
-    conn = sqlite3.connect(str(db_path))
-    cursor = conn.cursor()
-    try:
-        cursor.execute("DELETE FROM downloads WHERE id = ?", (item_id,))
-        conn.commit()
-    except Exception as e:
-        print(f"[!] SQLite Delete Error: {e}")
-    finally:
-        conn.close()

@@ -25,37 +25,96 @@ AUDIO_PRESET_QUALITY = {
 DEFAULT_OUTPUT_TEMPLATE = "%(title)s [%(id)s].%(ext)s"
 YOUTUBE_FALLBACK_EXTRACTOR_ARGS = "youtube:player-client=tv"
 
-def effective_video_height(item_config: dict) -> str:
-    selected = VIDEO_PRESET_HEIGHT.get(item_config.get("video_profile"), "1080")
+def safe_get(obj, key, default=None):
+    if isinstance(obj, dict):
+        val = obj.get(key, default)
+        return default if val is None else val
+    val = getattr(obj, key, default)
+    return default if val is None else val
+
+def safe_set(obj, key, value):
+    if isinstance(obj, dict):
+        obj[key] = value
+    else:
+        setattr(obj, key, value)
+
+def sanitize_extra_args(extra_args_str: str) -> list[str]:
+    if not extra_args_str.strip():
+        return []
+    
+    try:
+        parts = shlex.split(extra_args_str, posix=False)
+    except Exception:
+        parts = extra_args_str.split()
+        
+    blacklist = {
+        "--exec", "--exec-before-download", "--exec-cmd", "-e",
+        "--downloader", "--external-downloader",
+        "--downloader-args", "--external-downloader-args"
+    }
+    
+    sanitized_parts = []
+    skip_next = False
+    
+    for i, part in enumerate(parts):
+        if skip_next:
+            skip_next = False
+            continue
+            
+        part_clean = part.strip()
+        part_lower = part_clean.lower()
+        
+        is_blocked = False
+        for blocked_arg in blacklist:
+            if part_lower == blocked_arg:
+                is_blocked = True
+                break
+            if part_lower.startswith(blocked_arg + "="):
+                is_blocked = True
+                break
+                
+        if is_blocked:
+            print(f"[Security Protection] Blocked dangerous parameter: {part}")
+            if "=" not in part_clean and i + 1 < len(parts):
+                skip_next = True
+            continue
+            
+        sanitized_parts.append(part)
+        
+    return sanitized_parts
+
+def effective_video_height(item) -> str:
+    selected = VIDEO_PRESET_HEIGHT.get(safe_get(item, "video_profile"), "1080")
     if selected == "CUSTOM":
-        return item_config.get("video_limit", "1080")
+        return safe_get(item, "video_limit", "1080")
     return selected
 
-def build_command(item: dict, output_dir: str) -> list[str]:
+def build_command(item, output_dir: str) -> list[str]:
     import tempfile
     import json
     
     out_dir = str(Path(output_dir).expanduser())
-    output_template = item.get("output_template", "").strip() or DEFAULT_OUTPUT_TEMPLATE
+    output_template = str(safe_get(item, "output_template", "")).strip() or DEFAULT_OUTPUT_TEMPLATE
     cmd: list[str] = [sys.executable, "-m", "yt_dlp", "--newline", "-P", out_dir, "-o", output_template]
 
     # If pre-fetched metadata exists (Multi-Clip Single-Fetch), inject it to avoid double-fetching network calls
-    if "video_info" in item and item["video_info"]:
+    video_info = safe_get(item, "video_info")
+    if video_info:
         try:
             # Create a temporary file to write cached JSON metadata
             temp_json = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json", encoding="utf-8")
-            json.dump(item["video_info"], temp_json, ensure_ascii=False)
+            json.dump(video_info, temp_json, ensure_ascii=False)
             temp_json.close()
             # Cache the temp path so downloader can clean it up
-            item["_temp_info_json"] = temp_json.name
+            safe_set(item, "_temp_info_json", temp_json.name)
             cmd.extend(["--load-info-json", temp_json.name])
         except Exception as e:
             print(f"[warning] Failed to write --load-info-json temp file: {e}")
 
-    mode = item.get("mode", "Video")
+    mode = safe_get(item, "mode", "Video")
     if mode == "Video":
         quality = effective_video_height(item)
-        audio_codec = item.get("video_audio_codec", "AAC").strip().upper()
+        audio_codec = str(safe_get(item, "video_audio_codec", "AAC")).strip().upper()
         if audio_codec.startswith("AAC"):
             preferred_audio_selector = "ba[acodec^=mp4a]"
             secondary_audio_selector = "ba[ext=m4a]"
@@ -76,74 +135,73 @@ def build_command(item: dict, output_dir: str) -> list[str]:
             f"{video_selector}+ba/"
             f"{fallback_selector}"
         )
-        cmd.extend(["-f", selector, "--merge-output-format", item.get("video_container", "mp4")])
+        cmd.extend(["-f", selector, "--merge-output-format", safe_get(item, "video_container", "mp4")])
     else:
-        audio_quality = AUDIO_PRESET_QUALITY.get(item.get("audio_quality", "Best"), "0")
-        cmd.extend(["-x", "--audio-format", item.get("audio_format", "mp3"), "--audio-quality", audio_quality])
+        audio_quality = AUDIO_PRESET_QUALITY.get(safe_get(item, "audio_quality", "Best"), "0")
+        cmd.extend(["-x", "--audio-format", safe_get(item, "audio_format", "mp3"), "--audio-quality", audio_quality])
 
-    if not item.get("playlist"):
+    if not safe_get(item, "playlist"):
         cmd.append("--no-playlist")
-    if item.get("metadata"):
+    if safe_get(item, "metadata"):
         cmd.append("--add-metadata")
-    if item.get("thumbnail_flag"):
+    if safe_get(item, "thumbnail_flag"):
         cmd.extend(["--write-thumbnail", "--convert-thumbnails", "jpg"])
         if mode == "Audio":
             cmd.append("--embed-thumbnail")
-    if item.get("subs"):
+    if safe_get(item, "subs"):
         cmd.extend(["--write-subs", "--sub-langs", "all,-live_chat"])
-    if item.get("auto_subs"):
+    if safe_get(item, "auto_subs"):
         cmd.append("--write-auto-subs")
-    if item.get("restrict_names"):
+    if safe_get(item, "restrict_names"):
         cmd.append("--restrict-filenames")
 
-    # Bug Fix 1: SponsorBlock queue snapshot persistence (read from item snapshot)
-    if item.get("sponsorblock"):
+    if safe_get(item, "sponsorblock"):
         cmd.extend(["--sponsorblock-remove", "all"])
 
-    playlist_items = item.get("playlist_items", "").strip()
+    playlist_items = str(safe_get(item, "playlist_items", "")).strip()
     if playlist_items:
         cmd.extend(["--playlist-items", playlist_items.replace(" ", "")])
 
-    max_downloads = item.get("max_downloads", "").strip()
+    max_downloads = str(safe_get(item, "max_downloads", "")).strip()
     if max_downloads:
         cmd.extend(["--max-downloads", max_downloads])
 
-    rate_limit = item.get("rate_limit", "").strip()
+    rate_limit = str(safe_get(item, "rate_limit", "")).strip()
     if rate_limit:
         cmd.extend(["--limit-rate", rate_limit])
 
-    if item.get("archive"):
+    if safe_get(item, "archive"):
         archive_file = str(Path(out_dir) / ".downloaded_archive.txt")
         cmd.extend(["--download-archive", archive_file])
 
-    retries = item.get("retries", "").strip()
+    retries = str(safe_get(item, "retries", "")).strip()
     if retries:
         cmd.extend(["--retries", retries])
 
-    concurrent_fragments = item.get("concurrent_fragments", "").strip()
+    concurrent_fragments = str(safe_get(item, "concurrent_fragments", "")).strip()
     if concurrent_fragments:
         cmd.extend(["--concurrent-fragments", concurrent_fragments])
 
-    cookies_file = item.get("cookies", "").strip()
+    cookies_file = str(safe_get(item, "cookies", "")).strip()
     if cookies_file:
         cmd.extend(["--cookies", cookies_file])
     else:
-        browser_cookies = item.get("browser_cookies", "").strip().lower()
-        # Bug Fix 4: Fix locale-specific hardcoded "Kapali" check
+        browser_cookies = str(safe_get(item, "browser_cookies", "")).strip().lower()
         if browser_cookies and browser_cookies not in ("kapali", "disabled", "off", "closed", "none"):
             cmd.extend(["--cookies-from-browser", browser_cookies])
 
-    # Time Range Clip Integration (Strateji 1 & 2: Seek/Precision & Hybrid Pass 1)
-    if item.get("clip_enabled"):
-        clip_strategy = item.get("clip_strategy", "stream_seek")
-        start_str = item.get("clip_start", "00:00").strip()
-        end_str = item.get("clip_end", "00:00").strip()
+    if safe_get(item, "clip_enabled"):
+        clip_strategy = safe_get(item, "clip_strategy", "stream_seek")
+        # DESIGN NOTE (full_trim): Under "full_trim", we intentionally do NOT inject yt-dlp section downloads.
+        # This is an intentional design contract: the whole file is downloaded first, then trimmed in downloader.py
+        # post-processing using FFmpeg to guarantee frame accuracy and codec stability.
+        start_str = str(safe_get(item, "clip_start", "00:00")).strip()
+        end_str = str(safe_get(item, "clip_end", "00:00")).strip()
         
         start = parse_time_to_seconds(start_str) or 0.0
         end = parse_time_to_seconds(end_str) or 0.0
         
         if clip_strategy == "hybrid":
-            # Pass 1: Seek with 5s safety buffer
             buffer = 5.0
             buffered_start = max(0.0, start - buffer)
             buffered_end = end + buffer
@@ -156,17 +214,17 @@ def build_command(item: dict, output_dir: str) -> list[str]:
                 "--download-sections", f"*{start_str}-{end_str}",
                 "--force-keyframes-at-cuts"
             ])
-            if item.get("clip_precise") or clip_strategy == "precise_cut":
+            if safe_get(item, "clip_precise") or clip_strategy == "precise_cut":
                 cmd.extend([
                     "--postprocessor-args",
                     f"ffmpeg:-ss {start_str} -to {end_str} -avoid_negative_ts make_zero"
                 ])
 
-    extra_args = item.get("extra_args", "").strip()
+    extra_args = str(safe_get(item, "extra_args", "")).strip()
     if extra_args:
-        cmd.extend(shlex.split(extra_args, posix=False))
+        cmd.extend(sanitize_extra_args(extra_args))
 
-    cmd.append(item.get("url"))
+    cmd.append(safe_get(item, "url"))
     return cmd
 
 def format_cmd_for_log(cmd: list[str]) -> str:

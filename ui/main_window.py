@@ -15,9 +15,9 @@ import customtkinter as ctk
 from PIL import Image, ImageTk
 
 # Core imports
-from core.app_state import AppState
+from core.app_state import AppState, TaskStatus
 from core.downloader import run_queue_executor, resolve_ffmpeg_path
-from core.history import init_db, add_download_record, get_all_downloads
+from core.history import init_db, add_download_record, get_all_downloads, _db_writer
 from core.clip import decide_clip_strategy, parse_time_to_seconds, format_seconds_to_mmss
 
 # UI imports
@@ -267,7 +267,7 @@ class MainWindow(ctk.CTk):
         self.advanced_panel.grid(row=3, column=0, padx=4, pady=6, sticky="ew")
 
         # 4. Queue Panel (Kuyruk listesi & Geçmiş)
-        self.queue_panel = QueuePanel(self.main_scroll, self.app_state, self._remove_from_queue, self._redownload_historic_item)
+        self.queue_panel = QueuePanel(self.main_scroll, self.app_state, self._remove_from_queue, self._redownload_historic_item, self._cancel_single_task)
         self.queue_panel.grid(row=4, column=0, padx=4, pady=6, sticky="ew")
 
         # 5. Progress Dashboard Panel (İndirme İlerleme Paneli)
@@ -345,9 +345,9 @@ class MainWindow(ctk.CTk):
                         with open(local_thumb_path, 'wb') as out_file:
                             out_file.write(response.read())
 
-                    pil_img = Image.open(local_thumb_path)
-                    pil_img = pil_img.resize((160, 90), Image.Resampling.LANCZOS)
-                    local_thumb_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(160, 90))
+                    with Image.open(local_thumb_path) as pil_img:
+                        resized = pil_img.resize((160, 90), Image.Resampling.LANCZOS).copy()
+                    local_thumb_img = ctk.CTkImage(light_image=resized, dark_image=resized, size=(160, 90))
                 except Exception as e:
                     print(f"Thumbnail download failed: {e}")
 
@@ -440,10 +440,11 @@ class MainWindow(ctk.CTk):
         if self.app_state.is_batch_mode:
             # Multi-line batch processing
             added_count = 0
+            from core.app_state import DownloadTask
             for raw_url in self.app_state.batch_urls:
                 if raw_url.startswith(("http://", "https://")):
                     item_id = hashlib.md5(raw_url.encode()).hexdigest()
-                    item = {
+                    task_params = {
                         "id": item_id,
                         "url": raw_url,
                         "title": f"Batch Link [{item_id[:6]}]",
@@ -452,8 +453,9 @@ class MainWindow(ctk.CTk):
                         "status": "Bekliyor" if lang == "tr" else ("Esperando" if lang == "es" else "Waiting"),
                         "clip_strategy": clip_strategy
                     }
-                    item.update(item_cfg)
-                    self.app_state.queue_list.append(item)
+                    task_params.update(item_cfg)
+                    task = DownloadTask(**task_params)
+                    self.app_state.queue_list.append(task)
                     added_count += 1
             
             self.url_panel.set_url("")
@@ -464,6 +466,7 @@ class MainWindow(ctk.CTk):
             duration_total = self.app_state.current_video_info.get("duration", 0) if self.app_state.current_video_info else 0
             duration = format_seconds_to_mmss(duration_total)
             
+            from core.app_state import DownloadTask
             # Check if Multi-Clip is active
             multi_clips = self.preview_panel.get_multi_clips()
             if multi_clips:
@@ -487,7 +490,7 @@ class MainWindow(ctk.CTk):
                     macro_start_str = format_seconds_to_mmss(macro.start)
                     macro_end_str = format_seconds_to_mmss(macro.end)
                     
-                    macro_item = {
+                    macro_item_params = {
                         "id": item_id,
                         "url": url,
                         "preset": item_cfg.get("video_profile", "Custom"),
@@ -495,10 +498,10 @@ class MainWindow(ctk.CTk):
                         "video_info": self.app_state.current_video_info,  # Inject cached video_info for --load-info-json
                         "merge_clips": self.preview_panel.merge_clips_var.get()
                     }
-                    macro_item.update(item_cfg)
+                    macro_item_params.update(item_cfg)
                     
                     if len(macro.micro_clips) > 1:
-                        macro_item.update({
+                        macro_item_params.update({
                             "title": f"{title_base} [Macro Clip {idx_macro+1}]",
                             "duration": format_seconds_to_mmss(macro.end - macro.start),
                             "clip_enabled": True,
@@ -517,7 +520,7 @@ class MainWindow(ctk.CTk):
                         })
                     else:
                         mc = macro.micro_clips[0]
-                        macro_item.update({
+                        macro_item_params.update({
                             "title": f"{title_base} (Clip {mc.id})",
                             "duration": format_seconds_to_mmss(mc.end - mc.start),
                             "clip_enabled": True,
@@ -527,7 +530,8 @@ class MainWindow(ctk.CTk):
                             "export_profile": mc.export_profile,
                         })
                     
-                    self.app_state.queue_list.append(macro_item)
+                    task = DownloadTask(**macro_item_params)
+                    self.app_state.queue_list.append(task)
                     added_count += 1
                 
                 self.url_panel.set_url("")
@@ -536,7 +540,7 @@ class MainWindow(ctk.CTk):
             else:
                 # Normal single item or clipping off
                 item_id = hashlib.md5(url.encode()).hexdigest()
-                item = {
+                task_params = {
                     "id": item_id,
                     "url": url,
                     "title": title_base,
@@ -545,8 +549,9 @@ class MainWindow(ctk.CTk):
                     "status": "Bekliyor" if lang == "tr" else ("Esperando" if lang == "es" else "Waiting"),
                     "clip_strategy": clip_strategy
                 }
-                item.update(item_cfg)
-                self.app_state.queue_list.append(item)
+                task_params.update(item_cfg)
+                task = DownloadTask(**task_params)
+                self.app_state.queue_list.append(task)
                 
                 self.url_panel.set_url("")
                 self.preview_panel.hide()
@@ -558,10 +563,19 @@ class MainWindow(ctk.CTk):
         if idx >= 0 and idx < len(self.app_state.queue_list):
             item = self.app_state.queue_list[idx]
             # Don't delete active downloading item
-            if "İndir" in item["status"] or "Down" in item["status"] or "Desc" in item["status"]:
+            if item.status_code == TaskStatus.DOWNLOADING:
                 return
             del self.app_state.queue_list[idx]
             self.queue_panel.update_list()
+
+    def _cancel_single_task(self, task_id: str):
+        for task in self.app_state.queue_list:
+            if task.id == task_id:
+                task.cancel_event.set()
+                lang = self.app_state.current_lang
+                task.status = "İptal Ediliyor" if lang == "tr" else ("Cancelando" if lang == "es" else "Cancelling")
+                self.queue_panel.update_list()
+                break
 
     def _redownload_historic_item(self, url: str, format_desc: str):
         # Feature 3.2: Re-download callback
@@ -623,27 +637,57 @@ class MainWindow(ctk.CTk):
 
     # ================== METRIC DRAINING & LIFECYCLE ==================
     def _drain_ui_queue(self) -> None:
-        while True:
+        processed = 0
+        log_batch = []
+        while processed < 100:
             try:
                 kind, payload = self.ui_queue.get_nowait()
             except queue.Empty:
                 break
+            processed += 1
 
             if kind == "log":
-                self.progress_panel.append_log(str(payload))
+                log_batch.append(str(payload))
             elif kind == "stats":
                 stats = payload
+                task_id = stats["task_id"]
                 percent_val = float(stats["percent"])
-                self.progress_panel.set_progress(percent_val / 100.0)
-                self.progress_panel.set_stats(
-                    speed=str(stats["speed"]),
-                    eta=str(stats["eta"]),
-                    size=str(stats["size"])
+                
+                # Find and update task model
+                for t in self.app_state.queue_list:
+                    if t.id == task_id:
+                        t.percent = percent_val
+                        t.size = stats["size"]
+                        t.speed = stats["speed"]
+                        t.eta = stats["eta"]
+                        break
+
+                # Update the task progress dynamically in the card list without redrawing
+                self.queue_panel.update_task_progress(
+                    task_id=task_id,
+                    percent=percent_val,
+                    speed=stats["speed"],
+                    eta=stats["eta"],
+                    size=stats["size"]
                 )
+
+                # Dynamically calculate and update unified global progress bar
+                self.progress_panel.update_global_progress(self.app_state.queue_list)
+
             elif kind == "active_file":
-                self.progress_panel.active_file_var.set(str(payload))
+                task_id, filename = payload
+                for t in self.app_state.queue_list:
+                    if t.id == task_id:
+                        t.active_filename = filename
+                        break
+                
+                # Render active downloading files list
+                active_tasks = [t for t in self.app_state.queue_list if t.status_code == TaskStatus.DOWNLOADING]
+                if active_tasks:
+                    titles = ", ".join(t.title[:15] + "..." for t in active_tasks)
+                    self.progress_panel.active_file_var.set(f"Aktif İndirmeler: {titles}")
             elif kind == "percent_complete":
-                self.progress_panel.set_progress(float(payload))
+                pass # Handled by update_global_progress
             elif kind == "status":
                 dot, color, message = payload
                 self.progress_panel.update_status(dot, color, message)
@@ -655,7 +699,6 @@ class MainWindow(ctk.CTk):
             elif kind == "metadata_error":
                 self.preview_panel.show_error()
             elif kind == "toast_outdated":
-                # Bug Fix 2: Outdated warning trigger display
                 self._show_toast(TRANSLATIONS[self.app_state.current_lang]["lbl_toast_outdated_title"], TRANSLATIONS[self.app_state.current_lang]["lbl_toast_outdated_desc"])
             elif kind == "toast_success":
                 from ui.components.toast import ActionableToast
@@ -689,11 +732,14 @@ class MainWindow(ctk.CTk):
                     self.progress_panel.update_status("●", THEME_ACCENT_GREEN, TRANSLATIONS[self.app_state.current_lang]["lbl_status_completed"])
                     self._show_toast(TRANSLATIONS[self.app_state.current_lang]["lbl_toast_all_title"], TRANSLATIONS[self.app_state.current_lang]["lbl_toast_all_desc"])
 
-        self.after(100, self._drain_ui_queue)
+        if log_batch:
+            self.progress_panel.append_log_batch(log_batch)
+
+        self.after(50, self._drain_ui_queue)
 
     def _show_toast(self, title: str, desc: str):
-        # Show premium Tkinter messagebox toast
-        messagebox.showinfo(title, desc)
+        from ui.components.toast import NotificationToast
+        NotificationToast(self, title, desc)
 
     def _toggle_theme_mode(self):
         if self.app_state.current_theme == "Dark":
@@ -706,7 +752,15 @@ class MainWindow(ctk.CTk):
             self.theme_btn.configure(text=TRANSLATIONS[self.app_state.current_lang]["theme_dark"])
 
     def _toggle_language(self, choice: str):
-        self.app_state.current_lang = choice.lower()
+        LANG_MAP = {
+            "türkçe": "tr",
+            "english": "en",
+            "español": "es",
+            "tr": "tr",
+            "en": "en",
+            "es": "es"
+        }
+        self.app_state.current_lang = LANG_MAP.get(choice.lower(), "en")
         lang = self.app_state.current_lang
         
         # Update Header Card labels
@@ -740,27 +794,41 @@ class MainWindow(ctk.CTk):
         
         import subprocess
         import sys
+        import threading
         
-        creationflags = 0
-        if sys.platform == "win32":
-            creationflags = subprocess.CREATE_NO_WINDOW
+        def _run():
+            creationflags = 0
+            if sys.platform == "win32":
+                creationflags = subprocess.CREATE_NO_WINDOW
+                
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "-U", "yt-dlp"],
+                    capture_output=True,
+                    creationflags=creationflags,
+                    shell=False
+                )
+                success = (result.returncode == 0)
+            except Exception:
+                success = False
+                
+            self.after(0, lambda: self._on_upgrade_complete(success))
             
-        # Launch ghost upgrade subprocess without flashing black command windows
-        subprocess.Popen(
-            [sys.executable, "-m", "pip", "install", "-U", "yt-dlp"],
-            creationflags=creationflags
-        )
-        
-        # Schedule visual callback in 6 seconds
-        self.after(6000, self._on_upgrade_complete)
+        threading.Thread(target=_run, daemon=True).start()
 
-    def _on_upgrade_complete(self):
+    def _on_upgrade_complete(self, success: bool):
         lang = self.app_state.current_lang
-        success_text = "Güncelleme Tamamlandı! Yeniden Başlatın." if lang == "tr" else "Upgrade Finished! Please Restart."
+        if success:
+            success_text = "Güncelleme Tamamlandı! Yeniden Başlatın." if lang == "tr" else "Upgrade Finished! Please Restart."
+            fg_color = "#10b981"
+        else:
+            success_text = "Güncelleme Başarısız!" if lang == "tr" else "Upgrade Failed!"
+            fg_color = "#f43f5e"
+            
         self.btn_update_warning.configure(
             text=success_text,
             state="disabled",
-            fg_color="#10b981"
+            fg_color=fg_color
         )
 
     def _on_close(self):
@@ -769,6 +837,11 @@ class MainWindow(ctk.CTk):
                 return
             self._cancel_download()
         
+        try:
+            _db_writer.shutdown()
+        except Exception:
+            pass
+            
         try:
             shutil.rmtree(self.scratch_dir, ignore_errors=True)
         except Exception:

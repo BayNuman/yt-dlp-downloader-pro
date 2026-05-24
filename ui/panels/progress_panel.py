@@ -6,7 +6,7 @@ from ui.theme import (
     THEME_TEXT_SECONDARY, THEME_ACCENT_BLUE, THEME_ACCENT_INDIGO,
     THEME_ACCENT_GREEN, THEME_ACCENT_RED, TRANSLATIONS
 )
-from core.app_state import AppState
+from core.app_state import AppState, TaskStatus
 
 class ProgressPanel(ctk.CTkFrame):
     def __init__(self, parent, state: AppState, on_start_callback, on_cancel_callback, on_open_folder_callback, **kwargs):
@@ -229,9 +229,54 @@ class ProgressPanel(ctk.CTkFrame):
         self.log_textbox.configure(state="disabled")
         self.app_state.terminal_logs.append(text)
 
+    def append_log_batch(self, lines: list[str]):
+        if not lines:
+            return
+        self.log_textbox.configure(state="normal")
+        combined_text = "".join(lines)
+        self.log_textbox.insert("end", combined_text)
+        self.log_textbox.see("end")
+        self.log_textbox.configure(state="disabled")
+        self.app_state.terminal_logs.extend(lines)
+
     def set_progress(self, percent: float):
         self.progress.set(percent)
         self.percent_stat_var.set(f"{int(percent * 100)}%")
+
+    def update_global_progress(self, queue_list: list):
+        if not queue_list:
+            self.progress.set(0)
+            self.percent_stat_var.set("0%")
+            self.set_stats("0.0 KB/s", "--:--", "0.0 MB")
+            return
+            
+        total_percent = 0.0
+        active_speeds = []
+        active_etas = []
+        total_sizes = []
+        
+        # Calculate unified stats concurrently
+        for task in queue_list:
+            total_percent += task.percent
+            # Collect active stats to show combined values
+            if task.status_code == TaskStatus.DOWNLOADING:
+                if task.speed and "0.0" not in task.speed and "Unknown" not in task.speed:
+                    active_speeds.append(task.speed)
+                if task.eta and "--" not in task.eta:
+                    active_etas.append(task.eta)
+                if task.size and "0.0" not in task.size:
+                    total_sizes.append(task.size)
+                    
+        avg_percent = total_percent / len(queue_list)
+        self.progress.set(avg_percent / 100.0)
+        self.percent_stat_var.set(f"{int(avg_percent)}%")
+
+        # Set aggregated metrics
+        combined_speed = active_speeds[0] if active_speeds else "0.0 KB/s"
+        combined_eta = active_etas[0] if active_etas else "--:--"
+        combined_size = total_sizes[0] if total_sizes else "0.0 MB"
+        
+        self.set_stats(combined_speed, combined_eta, combined_size)
 
     def update_status(self, dot: str, color: str, message: str):
         self.status_dot.configure(text=dot, text_color=color)

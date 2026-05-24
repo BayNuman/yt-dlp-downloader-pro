@@ -202,3 +202,98 @@ class ActionableToast(ctk.CTkToplevel):
             self.after(20, self._fade_out)
         else:
             self.destroy()
+
+class NotificationToast(ctk.CTkToplevel):
+    def __init__(self, master, title: str, desc: str, duration_ms: int = 5000, color=THEME_ACCENT_BLUE, **kwargs):
+        super().__init__(master, **kwargs)
+        
+        self.duration_ms = duration_ms
+        
+        self.overrideredirect(True)
+        self.attributes("-topmost", True)
+        
+        self.frame = ctk.CTkFrame(
+            self,
+            fg_color=THEME_CARD_BG,
+            border_width=2,
+            border_color=color,
+            corner_radius=12
+        )
+        self.frame.pack(fill="both", expand=True)
+
+        header_frame = ctk.CTkFrame(self.frame, fg_color="transparent")
+        header_frame.pack(fill="x", padx=12, pady=(12, 4))
+        header_frame.grid_columnconfigure(0, weight=1)
+        
+        lbl_title = ctk.CTkLabel(
+            header_frame,
+            text=title,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            text_color=THEME_TEXT_PRIMARY
+        )
+        lbl_title.grid(row=0, column=0, sticky="w")
+        
+        btn_close = ctk.CTkButton(
+            header_frame,
+            text="✕",
+            width=20,
+            height=20,
+            fg_color="transparent",
+            text_color=THEME_TEXT_SECONDARY,
+            hover_color=THEME_ACCENT_RED,
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            command=self._fade_out
+        )
+        btn_close.grid(row=0, column=1, sticky="e")
+
+        lbl_desc = ctk.CTkLabel(
+            self.frame,
+            text=desc,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=THEME_TEXT_SECONDARY,
+            anchor="w",
+            justify="left",
+            wraplength=260
+        )
+        lbl_desc.pack(fill="x", padx=12, pady=(0, 14))
+        
+        self.attributes("-alpha", 0.0) 
+        self.update_idletasks()
+        self._position_toast()
+        
+        self._fade_in()
+        self.timer_id = self.after(self.duration_ms, self._fade_out)
+
+    def _position_toast(self):
+        req_width = self.winfo_reqwidth()
+        req_height = self.winfo_reqheight()
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        margin_x = 24
+        margin_y = 72 
+        x = screen_width - req_width - margin_x
+        y = screen_height - req_height - margin_y
+        self.geometry(f"{req_width}x{req_height}+{x}+{y}")
+
+    def _fade_in(self):
+        alpha = self.attributes("-alpha")
+        if alpha < 1.0:
+            alpha += 0.1
+            self.attributes("-alpha", min(alpha, 1.0))
+            self.after(20, self._fade_in)
+
+    def _fade_out(self):
+        if hasattr(self, 'timer_id') and self.timer_id:
+            try:
+                self.after_cancel(self.timer_id)
+            except Exception:
+                pass
+            self.timer_id = None
+            
+        alpha = self.attributes("-alpha")
+        if alpha > 0.0:
+            alpha -= 0.1
+            self.attributes("-alpha", max(alpha, 0.0))
+            self.after(20, self._fade_out)
+        else:
+            self.destroy()
