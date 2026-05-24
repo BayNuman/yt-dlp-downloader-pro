@@ -20,11 +20,13 @@ Trimming, format conversion, queue management — all in one powerful applicatio
 [![Platform: Android](https://img.shields.io/badge/Platform-Android%208%2B-3ddc84?logo=android)](https://github.com/BayNuman/yt-dlp-downloader-pro/releases)
 [![Android CI](https://github.com/BayNuman/yt-dlp-downloader-pro/actions/workflows/android-ci.yml/badge.svg)](https://github.com/BayNuman/yt-dlp-downloader-pro/actions/workflows/android-ci.yml)
 [![Stars](https://img.shields.io/github/stars/BayNuman/yt-dlp-downloader-pro?style=social)](https://github.com/BayNuman/yt-dlp-downloader-pro/stargazers)
+[![Patreon](https://img.shields.io/badge/Patreon-Sponsor-F96854?logo=patreon)](https://patreon.com/BayNuman?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink)
 
 [**⬇️ Download Windows**](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp_Downloader_Pro_Setup.exe) &nbsp;·&nbsp;
 [**📱 Android APK**](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/app-release.apk) &nbsp;·&nbsp;
 [**🐛 Report Bug**](https://github.com/BayNuman/yt-dlp-downloader-pro/issues/new?template=bug_report.md) &nbsp;·&nbsp;
-[**💡 Request Feature**](https://github.com/BayNuman/yt-dlp-downloader-pro/issues/new?template=feature_request.md)
+[**💡 Request Feature**](https://github.com/BayNuman/yt-dlp-downloader-pro/issues/new?template=feature_request.md) &nbsp;·&nbsp;
+[**🧡 Sponsor on Patreon**](https://patreon.com/BayNuman?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink)
 
 </div>
 
@@ -290,6 +292,8 @@ Distributed under the MIT License. See [LICENSE](LICENSE) for details.
 <div align="center">
 
 Made with ❤️ by [BayNuman](https://github.com/BayNuman)
+
+[**🧡 Become a Patron on Patreon**](https://patreon.com/BayNuman?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink)
 
 If you find this project useful, don't forget to give it a ⭐ to help others discover it!
 

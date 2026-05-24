@@ -20,11 +20,13 @@ Recorte, conversión de formatos, gestión de colas — todo en una sola aplicac
 [![Platform: Android](https://img.shields.io/badge/Platform-Android%208%2B-3ddc84?logo=android)](https://github.com/BayNuman/yt-dlp-downloader-pro/releases)
 [![Android CI](https://github.com/BayNuman/yt-dlp-downloader-pro/actions/workflows/android-ci.yml/badge.svg)](https://github.com/BayNuman/yt-dlp-downloader-pro/actions/workflows/android-ci.yml)
 [![Stars](https://img.shields.io/github/stars/BayNuman/yt-dlp-downloader-pro?style=social)](https://github.com/BayNuman/yt-dlp-downloader-pro/stargazers)
+[![Patreon](https://img.shields.io/badge/Patreon-Sponsor-F96854?logo=patreon)](https://patreon.com/BayNuman?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink)
 
 [**⬇️ Descargar Windows**](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp_Downloader_Pro_Setup.exe) &nbsp;·&nbsp;
 [**📱 APK de Android**](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/app-release.apk) &nbsp;·&nbsp;
 [**🐛 Reportar Error**](https://github.com/BayNuman/yt-dlp-downloader-pro/issues/new?template=bug_report.md) &nbsp;·&nbsp;
-[**💡 Solicitar Función**](https://github.com/BayNuman/yt-dlp-downloader-pro/issues/new?template=feature_request.md)
+[**💡 Solicitar Función**](https://github.com/BayNuman/yt-dlp-downloader-pro/issues/new?template=feature_request.md) &nbsp;·&nbsp;
+[**🧡 Patrocinar en Patreon**](https://patreon.com/BayNuman?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink)
 
 </div>
 
@@ -290,6 +292,8 @@ Distribuido bajo la Licencia MIT. Consulta [LICENSE](LICENSE) para más detalles
 <div align="center">
 
 Hecho con ❤️ por [BayNuman](https://github.com/BayNuman)
+
+[**🧡 Conviértete en un Patrón en Patreon**](https://patreon.com/BayNuman?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink)
 
 Si te gusta este proyecto, no olvides darle una ⭐ para que otros puedan descubrirlo!
 
