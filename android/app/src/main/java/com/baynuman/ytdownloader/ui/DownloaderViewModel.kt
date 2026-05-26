@@ -16,23 +16,31 @@ import com.baynuman.ytdownloader.data.DEFAULT_OUTPUT_TEMPLATE
 import com.baynuman.ytdownloader.data.DownloadEvent
 import com.baynuman.ytdownloader.data.DownloadMode
 import com.baynuman.ytdownloader.data.DownloadRequest
+import com.baynuman.ytdownloader.data.DownloadRecord
+import com.baynuman.ytdownloader.data.DownloadPreferencesState
+import com.baynuman.ytdownloader.data.ActiveTaskState
+import com.baynuman.ytdownloader.data.FormValidationState
 import com.baynuman.ytdownloader.data.UrlPreview
 import com.baynuman.ytdownloader.data.UrlPreviewResolver
 import com.baynuman.ytdownloader.data.YtDlpRunner
+import com.baynuman.ytdownloader.data.db.DownloadDatabase
+import com.baynuman.ytdownloader.data.db.DownloadRecordEntity
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import android.os.Build
-import com.baynuman.ytdownloader.data.DownloadRecord
 
 enum class UrlValidationState {
     IDLE,
@@ -108,14 +116,146 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
     private val runner = YtDlpRunner(appContext)
     private val binaryInstaller = BinaryInstaller(appContext)
     private val previewResolver = UrlPreviewResolver(appContext)
-    private val _uiState = MutableStateFlow(buildInitialState(application))
     private var previewJob: Job? = null
 
-    val uiState: StateFlow<DownloaderUiState> = _uiState.asStateFlow()
+    // Room database Single Source of Truth for History
+    private val database = DownloadDatabase.getDatabase(appContext)
+    private val recordDao = database.downloadRecordDao()
+
+    // 1. Atomic Domain States Flow Decompositions
+    private val _preferencesState = MutableStateFlow(buildInitialPreferencesState(application))
+    val preferencesState = _preferencesState.asStateFlow()
+
+    private val _activeTaskState = MutableStateFlow(ActiveTaskState())
+    val activeTaskState = _activeTaskState.asStateFlow()
+
+    private val _formValidationState = MutableStateFlow(FormValidationState())
+    val formValidationState = _formValidationState.asStateFlow()
+
+    // Additional global state elements
+    private val _historyRecords = MutableStateFlow<List<DownloadRecord>>(emptyList())
+    private val _activeTab = MutableStateFlow(0)
+    private val _isDarkTheme = MutableStateFlow(prefs.getBoolean("is_dark_theme", true))
+    private val _currentLanguage = MutableStateFlow(prefs.getString("current_language", "en") ?: "en")
+    private val _binaryStatus = MutableStateFlow("yt-dlp otomatik hazirlaniyor...")
+    private val _detectedAbi = MutableStateFlow("")
+    private val _executablePath = MutableStateFlow("internal://youtubedl-android")
+    private val _ffmpegLocation = MutableStateFlow("")
+    private val _mediaPermissionsGranted = MutableStateFlow(false)
+    private val _showDiagnostics = MutableStateFlow(false)
+    private val _showFullOutputPath = MutableStateFlow(false)
+
+    // 2. High-performance Selector Unified Flow for Backward Compatibility
+    val uiState: StateFlow<DownloaderUiState> = combine(
+        _preferencesState,
+        _activeTaskState,
+        _formValidationState,
+        _historyRecords,
+        _activeTab,
+        _isDarkTheme,
+        _currentLanguage,
+        _binaryStatus,
+        _detectedAbi,
+        _executablePath,
+        _ffmpegLocation,
+        _mediaPermissionsGranted,
+        _showDiagnostics,
+        _showFullOutputPath
+    ) { combined ->
+        val prefs = combined[0] as DownloadPreferencesState
+        val task = combined[1] as ActiveTaskState
+        val validation = combined[2] as FormValidationState
+        val history = combined[3] as List<DownloadRecord>
+        val tab = combined[4] as Int
+        val dark = combined[5] as Boolean
+        val lang = combined[6] as String
+        val binStat = combined[7] as String
+        val abi = combined[8] as String
+        val exePath = combined[9] as String
+        val ffmLocation = combined[10] as String
+        val perm = combined[11] as Boolean
+        val diag = combined[12] as Boolean
+        val fullPath = combined[13] as Boolean
+
+        DownloaderUiState(
+            urlsText = validation.urlsText,
+            outputDir = prefs.outputDir,
+            outputTemplate = DEFAULT_OUTPUT_TEMPLATE,
+            executablePath = exePath,
+            ffmpegLocation = ffmLocation,
+            binaryStatus = binStat,
+            detectedAbi = abi,
+            mediaPermissionsGranted = perm,
+            mode = prefs.mode,
+            videoPreset = prefs.videoPreset,
+            customVideoHeight = prefs.customVideoHeight,
+            videoContainer = prefs.videoContainer,
+            videoAudioCodec = prefs.videoAudioCodec,
+            audioFormat = prefs.audioFormat,
+            audioQualityPreset = prefs.audioQualityPreset,
+            playlistEnabled = prefs.playlistEnabled,
+            metadata = prefs.metadata,
+            thumbnail = prefs.thumbnail,
+            subtitles = prefs.subtitles,
+            autoSubtitles = prefs.autoSubtitles,
+            restrictNames = prefs.restrictNames,
+            playlistItems = prefs.playlistItems,
+            maxDownloads = prefs.maxDownloads,
+            rateLimit = prefs.rateLimit,
+            downloadArchive = prefs.downloadArchive,
+            showAdvanced = prefs.showAdvanced,
+            showDiagnostics = diag,
+            showFullOutputPath = fullPath,
+            cookiesFile = prefs.cookiesFile,
+            browserCookies = prefs.browserCookies,
+            retries = prefs.retries,
+            concurrentFragments = prefs.concurrentFragments,
+            extraArgs = prefs.extraArgs,
+            youtube403Fallback = prefs.youtube403Fallback,
+            urlValidationState = validation.urlValidationState,
+            urlStatusText = validation.urlStatusText,
+            previewTitle = validation.previewTitle,
+            previewChannel = validation.previewChannel,
+            previewItemCount = validation.previewItemCount,
+            sharedUrlBuffer = validation.sharedUrlBuffer,
+            status = task.status,
+            progress = task.progress,
+            speedText = task.speedText,
+            etaText = task.etaText,
+            playlistProgressText = task.playlistProgressText,
+            logs = task.logs,
+            isRunning = task.isRunning,
+            errorText = validation.errorText,
+            currentLanguage = lang,
+            isDarkTheme = dark,
+            isBatchMode = prefs.isBatchMode,
+            clipTextDetected = validation.clipTextDetected,
+            activeTab = tab,
+            historyRecords = history
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = buildInitialState(application)
+    )
 
     init {
         bootstrapEmbeddedBinaries()
-        loadHistory()
+        observeHistoryDatabase()
+    }
+
+    private fun buildInitialPreferencesState(application: Application): DownloadPreferencesState {
+        val fallbackOutputDir = application
+            .getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?.resolve("yt-downloads")
+            ?.absolutePath
+            ?: application.filesDir.resolve("yt-downloads").absolutePath
+        val savedOutputDir = prefs.getString(KEY_OUTPUT_DIR, null)?.trim().orEmpty()
+        val outputDir = if (savedOutputDir.isNotBlank()) savedOutputDir else fallbackOutputDir
+
+        return DownloadPreferencesState(
+            outputDir = outputDir
+        )
     }
 
     private fun buildInitialState(application: Application): DownloaderUiState {
@@ -125,11 +265,7 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
             ?.absolutePath
             ?: application.filesDir.resolve("yt-downloads").absolutePath
         val savedOutputDir = prefs.getString(KEY_OUTPUT_DIR, null)?.trim().orEmpty()
-        val outputDir = if (savedOutputDir.isNotBlank()) {
-            savedOutputDir
-        } else {
-            fallbackOutputDir
-        }
+        val outputDir = if (savedOutputDir.isNotBlank()) savedOutputDir else fallbackOutputDir
         
         val savedLang = prefs.getString("current_language", "en") ?: "en"
         val savedTheme = prefs.getBoolean("is_dark_theme", true)
@@ -141,27 +277,54 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
         )
     }
 
+    // Observe Room DB History in a reactive, asynchronus flow stream
+    private fun observeHistoryDatabase() {
+        viewModelScope.launch {
+            recordDao.getAllRecordsFlow().collect { entities ->
+                val records = entities.map { it.toDomainModel() }
+                _historyRecords.value = records
+            }
+        }
+    }
+
+    fun bootstrapEmbeddedBinaries(forceUpdate: Boolean = false) {
+        viewModelScope.launch {
+            _binaryStatus.value = "yt-dlp otomatik hazirlaniyor..."
+            val result = withContext(Dispatchers.IO) {
+                binaryInstaller.installOrReuse(forceUpdate = forceUpdate) { status ->
+                    _binaryStatus.value = status
+                }
+            }
+            _executablePath.value = result.ytDlpPath ?: _executablePath.value
+            _ffmpegLocation.value = result.ffmpegDir ?: ""
+            _detectedAbi.value = result.abi
+            _binaryStatus.value = result.message
+            _showDiagnostics.value = true
+            
+            appendLog("[bilgi] yt-dlp dahili runtime hazir. ABI: ${result.abi}\n")
+        }
+    }
+
     fun updateLanguage(value: String) {
-        updateState { copy(currentLanguage = value) }
+        _currentLanguage.value = value
         prefs.edit().putString("current_language", value).apply()
         telemetry("language_changed_$value")
     }
 
     fun toggleTheme() {
-        val next = !_uiState.value.isDarkTheme
-        updateState { copy(isDarkTheme = next) }
+        val next = !_isDarkTheme.value
+        _isDarkTheme.value = next
         prefs.edit().putBoolean("is_dark_theme", next).apply()
         telemetry("theme_changed_${if (next) "dark" else "light"}")
     }
 
     fun toggleBatchMode() {
-        val next = !_uiState.value.isBatchMode
-        updateState { copy(isBatchMode = next) }
-        telemetry("batch_mode_changed_$next")
+        _preferencesState.update { it.copy(isBatchMode = !it.isBatchMode) }
+        telemetry("batch_mode_changed_${_preferencesState.value.isBatchMode}")
     }
 
     fun removeUrlFromBatch(index: Int) {
-        val urls = parseUrls(_uiState.value.urlsText)
+        val urls = parseUrls(_formValidationState.value.urlsText)
         if (index in urls.indices) {
             val updatedUrls = urls.toMutableList().apply { removeAt(index) }
             val nextText = updatedUrls.joinToString("\n")
@@ -179,43 +342,43 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
                 ?.toString()
                 ?.trim()
                 .orEmpty()
-            if (pasted.isNotEmpty() && isLikelyYoutubeUrl(pasted) && !pasted.contains(_uiState.value.urlsText.trim())) {
-                updateState { copy(clipTextDetected = pasted) }
+            if (pasted.isNotEmpty() && isLikelyYoutubeUrl(pasted) && !pasted.contains(_formValidationState.value.urlsText.trim())) {
+                _formValidationState.update { it.copy(clipTextDetected = pasted) }
             } else {
-                updateState { copy(clipTextDetected = "") }
+                _formValidationState.update { it.copy(clipTextDetected = "") }
             }
         } catch (_: Exception) {
-            updateState { copy(clipTextDetected = "") }
+            _formValidationState.update { it.copy(clipTextDetected = "") }
         }
     }
 
     fun pasteDetectedClipboardUrl() {
-        val detected = _uiState.value.clipTextDetected
+        val detected = _formValidationState.value.clipTextDetected
         if (detected.isNotEmpty()) {
-            val current = _uiState.value.urlsText.trim()
+            val current = _formValidationState.value.urlsText.trim()
             val nextText = if (current.isEmpty()) {
                 detected
             } else {
-                if (_uiState.value.isBatchMode) {
+                if (_preferencesState.value.isBatchMode) {
                     "$current\n$detected"
                 } else {
                     detected
                 }
             }
             updateUrlsText(nextText)
-            updateState { copy(clipTextDetected = "") }
+            _formValidationState.update { it.copy(clipTextDetected = "") }
         }
     }
 
     fun updateUrlsText(value: String) {
-        updateState { copy(urlsText = value, errorText = null) }
+        _formValidationState.update { it.copy(urlsText = value, errorText = null) }
         schedulePreview(value)
     }
 
     fun clearUrl() {
         previewJob?.cancel()
-        updateState {
-            copy(
+        _formValidationState.update {
+            it.copy(
                 urlsText = "",
                 urlValidationState = UrlValidationState.IDLE,
                 urlStatusText = "YouTube baglantisini yapistirin.",
@@ -238,7 +401,7 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
             .orEmpty()
 
         if (pasted.isEmpty()) {
-            updateState { copy(errorText = "Panoda baglanti bulunamadi.") }
+            _formValidationState.update { it.copy(errorText = "Panoda baglanti bulunamadi.") }
             return
         }
         updateUrlsText(pasted)
@@ -246,43 +409,42 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
 
     fun updateOutputDir(value: String) {
         val sanitized = value.trim()
-        updateState { copy(outputDir = sanitized) }
+        _preferencesState.update { it.copy(outputDir = sanitized) }
         if (sanitized.isNotEmpty()) {
             persistOutputDir(sanitized)
         }
     }
-    fun updateOutputTemplate(value: String) = updateState { copy(outputTemplate = value) }
-    fun updateExecutablePath(value: String) = updateState { copy(executablePath = value) }
-    fun updateFfmpegLocation(value: String) = updateState { copy(ffmpegLocation = value) }
-    fun updateMode(value: DownloadMode) = updateState { copy(mode = value) }
-    fun updateVideoPreset(value: String) = updateState { copy(videoPreset = value) }
-    fun updateCustomVideoHeight(value: String) = updateState { copy(customVideoHeight = value) }
-    fun updateVideoContainer(value: String) = updateState { copy(videoContainer = value) }
-    fun updateVideoAudioCodec(value: String) = updateState { copy(videoAudioCodec = value) }
-    fun updateAudioFormat(value: String) = updateState { copy(audioFormat = value) }
-    fun updateAudioQualityPreset(value: String) = updateState { copy(audioQualityPreset = value) }
-    fun updatePlaylistEnabled(value: Boolean) = updateState { copy(playlistEnabled = value) }
-    fun updateMetadata(value: Boolean) = updateState { copy(metadata = value) }
-    fun updateThumbnail(value: Boolean) = updateState { copy(thumbnail = value) }
-    fun updateSubtitles(value: Boolean) = updateState { copy(subtitles = value) }
-    fun updateAutoSubtitles(value: Boolean) = updateState { copy(autoSubtitles = value) }
-    fun updateRestrictNames(value: Boolean) = updateState { copy(restrictNames = value) }
-    fun updatePlaylistItems(value: String) = updateState { copy(playlistItems = value) }
-    fun updateMaxDownloads(value: String) = updateState { copy(maxDownloads = value) }
-    fun updateRateLimit(value: String) = updateState { copy(rateLimit = value) }
-    fun updateDownloadArchive(value: Boolean) = updateState { copy(downloadArchive = value) }
-    fun updateShowAdvanced(value: Boolean) = updateState { copy(showAdvanced = value) }
-    fun toggleDiagnostics() = updateState { copy(showDiagnostics = !showDiagnostics) }
-    fun toggleFullOutputPath() = updateState { copy(showFullOutputPath = !showFullOutputPath) }
-    fun updateCookiesFile(value: String) = updateState { copy(cookiesFile = value) }
-    fun updateBrowserCookies(value: String) = updateState { copy(browserCookies = value) }
-    fun updateRetries(value: String) = updateState { copy(retries = value) }
-    fun updateConcurrentFragments(value: String) = updateState { copy(concurrentFragments = value) }
-    fun updateExtraArgs(value: String) = updateState { copy(extraArgs = value) }
-    fun updateYoutube403Fallback(value: Boolean) = updateState { copy(youtube403Fallback = value) }
+
+    fun updateMode(value: DownloadMode) = _preferencesState.update { it.copy(mode = value) }
+    fun updateVideoPreset(value: String) = _preferencesState.update { it.copy(videoPreset = value) }
+    fun updateCustomVideoHeight(value: String) = _preferencesState.update { it.copy(customVideoHeight = value) }
+    fun updateVideoContainer(value: String) = _preferencesState.update { it.copy(videoContainer = value) }
+    fun updateVideoAudioCodec(value: String) = _preferencesState.update { it.copy(videoAudioCodec = value) }
+    fun updateAudioFormat(value: String) = _preferencesState.update { it.copy(audioFormat = value) }
+    fun updateAudioQualityPreset(value: String) = _preferencesState.update { it.copy(audioQualityPreset = value) }
+    fun updatePlaylistEnabled(value: Boolean) = _preferencesState.update { it.copy(playlistEnabled = value) }
+    fun updateMetadata(value: Boolean) = _preferencesState.update { it.copy(metadata = value) }
+    fun updateThumbnail(value: Boolean) = _preferencesState.update { it.copy(thumbnail = value) }
+    fun updateSubtitles(value: Boolean) = _preferencesState.update { it.copy(subtitles = value) }
+    fun updateAutoSubtitles(value: Boolean) = _preferencesState.update { it.copy(autoSubtitles = value) }
+    fun updateRestrictNames(value: Boolean) = _preferencesState.update { it.copy(restrictNames = value) }
+    fun updatePlaylistItems(value: String) = _preferencesState.update { it.copy(playlistItems = value) }
+    fun updateMaxDownloads(value: String) = _preferencesState.update { it.copy(maxDownloads = value) }
+    fun updateRateLimit(value: String) = _preferencesState.update { it.copy(rateLimit = value) }
+    fun updateDownloadArchive(value: Boolean) = _preferencesState.update { it.copy(downloadArchive = value) }
+    fun updateShowAdvanced(value: Boolean) = _preferencesState.update { it.copy(showAdvanced = value) }
+    fun toggleDiagnostics() { _showDiagnostics.value = !_showDiagnostics.value }
+    fun toggleFullOutputPath() { _showFullOutputPath.value = !_showFullOutputPath.value }
+    fun updateCookiesFile(value: String) = _preferencesState.update { it.copy(cookiesFile = value) }
+    fun updateBrowserCookies(value: String) = _preferencesState.update { it.copy(browserCookies = value) }
+    fun updateRetries(value: String) = _preferencesState.update { it.copy(retries = value) }
+    fun updateConcurrentFragments(value: String) = _preferencesState.update { it.copy(concurrentFragments = value) }
+    fun updateExtraArgs(value: String) = _preferencesState.update { it.copy(extraArgs = value) }
+    fun updateYoutube403Fallback(value: Boolean) = _preferencesState.update { it.copy(youtube403Fallback = value) }
+    
     fun updateMediaPermissionsStatus(value: Boolean) {
-        val previous = _uiState.value.mediaPermissionsGranted
-        updateState { copy(mediaPermissionsGranted = value) }
+        val previous = _mediaPermissionsGranted.value
+        _mediaPermissionsGranted.value = value
         if (value && !previous) {
             telemetry("permission_granted")
         } else if (!value && previous) {
@@ -292,19 +454,19 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
 
     fun setIncomingSharedText(sharedText: String?) {
         val incoming = extractFirstUrl(sharedText.orEmpty()) ?: return
-        updateState { copy(sharedUrlBuffer = incoming) }
+        _formValidationState.update { it.copy(sharedUrlBuffer = incoming) }
         telemetry("share_url_received")
-        updateActiveTab(0) // Automatically select the Downloader tab
-        if (_uiState.value.urlsText.isBlank()) {
+        updateActiveTab(0)
+        if (_formValidationState.value.urlsText.isBlank()) {
             updateUrlsText(incoming)
             appendLog("[bilgi] Paylasilan baglanti alindi.\n")
         }
     }
 
     fun importFromSharedBuffer() {
-        val shared = _uiState.value.sharedUrlBuffer
+        val shared = _formValidationState.value.sharedUrlBuffer
         if (shared.isBlank()) {
-            updateState { copy(errorText = "Paylasimdan alinacak baglanti bulunamadi.") }
+            _formValidationState.update { it.copy(errorText = "Paylasimdan alinacak baglanti bulunamadi.") }
             return
         }
         updateUrlsText(shared)
@@ -317,19 +479,17 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
             ?.resolve("yt-downloads")
             ?.absolutePath
             ?: app.filesDir.resolve("yt-downloads").absolutePath
-        updateState { copy(outputDir = defaultOutputDir) }
+        _preferencesState.update { it.copy(outputDir = defaultOutputDir) }
         persistOutputDir(defaultOutputDir)
     }
 
     fun updateOutputDirFromTreeUri(uri: Uri?) {
-        if (uri == null) {
-            return
-        }
+        if (uri == null) return
         takePersistableTreePermission(uri)
         val resolvedPath = resolvePathFromTreeUri(uri)
         if (resolvedPath == null) {
-            updateState {
-                copy(
+            _formValidationState.update {
+                it.copy(
                     errorText = "Bu klasor desteklenmiyor. Download veya Documents altindan bir klasor secin.",
                 )
             }
@@ -341,13 +501,9 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
         if (!folder.exists()) {
             folder.mkdirs()
         }
-        updateState {
-            copy(
-                outputDir = folder.absolutePath,
-                showFullOutputPath = true,
-                errorText = null,
-            )
-        }
+        _preferencesState.update { it.copy(outputDir = folder.absolutePath) }
+        _showFullOutputPath.value = true
+        _formValidationState.update { it.copy(errorText = null) }
         persistOutputDir(folder.absolutePath)
         appendLog("[bilgi] Indirme konumu guncellendi: ${folder.absolutePath}\n")
         telemetry("output_folder_changed")
@@ -358,13 +514,12 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun clearLogs() {
-        updateState { copy(logs = "", errorText = null) }
+        _activeTaskState.update { it.copy(logs = "") }
+        _formValidationState.update { it.copy(errorText = null) }
     }
 
     fun importCookiesFromUri(uri: Uri?) {
-        if (uri == null) {
-            return
-        }
+        if (uri == null) return
         viewModelScope.launch {
             val app = getApplication<Application>()
             val destination = File(app.filesDir, "cookies/cookies.txt").apply {
@@ -372,18 +527,17 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
             }
             val copied = copyUriToFile(uri, destination)
             if (copied) {
-                updateState { copy(cookiesFile = destination.absolutePath, showAdvanced = true, errorText = null) }
+                _preferencesState.update { it.copy(cookiesFile = destination.absolutePath, showAdvanced = true) }
+                _formValidationState.update { it.copy(errorText = null) }
                 appendLog("[bilgi] Cookies dosyasi ice aktarildi: ${destination.absolutePath}\n")
             } else {
-                updateState { copy(errorText = "Cookies dosyasi okunamadi.") }
+                _formValidationState.update { it.copy(errorText = "Cookies dosyasi okunamadi.") }
             }
         }
     }
 
     fun importYtDlpBinaryFromUri(uri: Uri?) {
-        if (uri == null) {
-            return
-        }
+        if (uri == null) return
         viewModelScope.launch {
             val app = getApplication<Application>()
             val destination = File(app.filesDir, "bin/yt-dlp").apply {
@@ -392,91 +546,84 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
             val copied = copyUriToFile(uri, destination)
             if (copied) {
                 destination.setExecutable(true, false)
-                updateState {
-                    copy(
-                        executablePath = destination.absolutePath,
-                        ffmpegLocation = destination.parentFile?.absolutePath ?: ffmpegLocation,
-                        binaryStatus = "yt-dlp dosya secici ile guncellendi.",
-                        errorText = null,
-                        showDiagnostics = true,
-                    )
-                }
+                _executablePath.value = destination.absolutePath
+                _ffmpegLocation.value = destination.parentFile?.absolutePath ?: _ffmpegLocation.value
+                _binaryStatus.value = "yt-dlp dosya secici ile guncellendi."
+                _formValidationState.update { it.copy(errorText = null) }
+                _showDiagnostics.value = true
                 appendLog("[bilgi] yt-dlp binary guncellendi: ${destination.absolutePath}\n")
             } else {
-                updateState { copy(errorText = "yt-dlp binary okunamadi.") }
+                _formValidationState.update { it.copy(errorText = "yt-dlp binary okunamadi.") }
             }
         }
     }
 
     fun cancelDownload() {
-        if (!_uiState.value.isRunning) {
-            return
-        }
+        if (!_activeTaskState.value.isRunning) return
         runner.cancel()
         appendLog("[bilgi] Duraklatma/iptal istegi gonderildi.\n")
-        updateState { copy(status = "Duraklatiliyor...") }
+        _activeTaskState.update { it.copy(status = "Duraklatiliyor...") }
     }
 
     fun startDownload() {
-        val state = _uiState.value
-        if (state.isRunning) {
-            return
-        }
+        val prefs = _preferencesState.value
+        val validation = _formValidationState.value
+        if (_activeTaskState.value.isRunning) return
 
-        val validationError = validate(state)
+        val validationError = validate(prefs, validation)
         if (validationError != null) {
-            updateState { copy(errorText = validationError, status = "Hazir") }
+            _formValidationState.update { it.copy(errorText = validationError) }
+            _activeTaskState.update { it.copy(status = "Hazir") }
             telemetry("start_download_blocked")
             return
         }
 
-        val urls = parseUrls(state.urlsText)
+        val urls = parseUrls(validation.urlsText)
         val request = DownloadRequest(
             urls = urls,
-            outputDir = state.outputDir,
-            outputTemplate = state.outputTemplate,
-            executablePath = state.executablePath,
-            ffmpegLocation = state.ffmpegLocation,
-            mode = state.mode,
-            videoPreset = state.videoPreset,
-            customVideoHeight = state.customVideoHeight,
-            videoContainer = state.videoContainer,
-            videoAudioCodec = state.videoAudioCodec,
-            audioFormat = state.audioFormat,
-            audioQualityPreset = state.audioQualityPreset,
-            playlistEnabled = state.playlistEnabled,
-            metadata = state.metadata,
-            thumbnail = state.thumbnail,
-            subtitles = state.subtitles,
-            autoSubtitles = state.autoSubtitles,
-            restrictNames = state.restrictNames,
-            playlistItems = state.playlistItems,
-            maxDownloads = state.maxDownloads.trim().toIntOrNull(),
-            rateLimit = state.rateLimit,
-            downloadArchive = state.downloadArchive,
-            cookiesFile = state.cookiesFile,
-            browserCookies = state.browserCookies,
-            retries = state.retries.trim().toIntOrNull(),
-            concurrentFragments = state.concurrentFragments.trim().toIntOrNull(),
-            extraArgs = state.extraArgs,
-            youtube403Fallback = state.youtube403Fallback,
+            outputDir = prefs.outputDir,
+            executablePath = _executablePath.value,
+            ffmpegLocation = _ffmpegLocation.value,
+            mode = prefs.mode,
+            videoPreset = prefs.videoPreset,
+            customVideoHeight = prefs.customVideoHeight,
+            videoContainer = prefs.videoContainer,
+            videoAudioCodec = prefs.videoAudioCodec,
+            audioFormat = prefs.audioFormat,
+            audioQualityPreset = prefs.audioQualityPreset,
+            playlistEnabled = prefs.playlistEnabled,
+            metadata = prefs.metadata,
+            thumbnail = prefs.thumbnail,
+            subtitles = prefs.subtitles,
+            autoSubtitles = prefs.autoSubtitles,
+            restrictNames = prefs.restrictNames,
+            playlistItems = prefs.playlistItems,
+            maxDownloads = prefs.maxDownloads.trim().toIntOrNull(),
+            rateLimit = prefs.rateLimit,
+            downloadArchive = prefs.downloadArchive,
+            cookiesFile = prefs.cookiesFile,
+            browserCookies = prefs.browserCookies,
+            retries = prefs.retries.trim().toIntOrNull(),
+            concurrentFragments = prefs.concurrentFragments.trim().toIntOrNull(),
+            extraArgs = prefs.extraArgs,
+            youtube403Fallback = prefs.youtube403Fallback,
         )
 
-        updateState {
-            copy(
+        _activeTaskState.update {
+            it.copy(
                 isRunning = true,
                 status = "Indirme baslatildi",
                 progress = 0f,
                 speedText = "--",
                 etaText = "--",
                 playlistProgressText = "",
-                errorText = null,
             )
         }
+        _formValidationState.update { it.copy(errorText = null) }
         telemetry("start_download")
 
-        val firstUrl = extractFirstUrl(state.urlsText) ?: ""
-        val activeTitle = if (state.previewTitle.isNotBlank()) state.previewTitle else firstUrl
+        val firstUrl = extractFirstUrl(validation.urlsText) ?: ""
+        val activeTitle = if (validation.previewTitle.isNotBlank()) validation.previewTitle else firstUrl
         startForegroundDownloadService(activeTitle)
 
         viewModelScope.launch {
@@ -485,22 +632,22 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
                     is DownloadEvent.LogLine -> handleLogLine(event.text)
                     is DownloadEvent.Progress -> {
                         val progressVal = event.value.coerceIn(0f, 1f)
-                        updateState { copy(progress = progressVal) }
+                        _activeTaskState.update { it.copy(progress = progressVal) }
                         
                         val percentage = (progressVal * 100).toInt()
                         updateForegroundDownloadService(
-                            title = if (_uiState.value.previewTitle.isNotBlank()) _uiState.value.previewTitle else "yt-dlp",
+                            title = if (_formValidationState.value.previewTitle.isNotBlank()) _formValidationState.value.previewTitle else "yt-dlp",
                             progress = percentage,
-                            speed = _uiState.value.speedText,
-                            eta = _uiState.value.etaText
+                            speed = _activeTaskState.value.speedText,
+                            eta = _activeTaskState.value.etaText
                         )
                     }
-                    is DownloadEvent.Status -> updateState { copy(status = event.text) }
+                    is DownloadEvent.Status -> _activeTaskState.update { it.copy(status = event.text) }
                     is DownloadEvent.Finished -> {
-                        updateState {
-                            copy(
+                        _activeTaskState.update {
+                            it.copy(
                                 isRunning = false,
-                                status = if (event.success) "Tamamlandi" else this.status,
+                                status = if (event.success) "Tamamlandi" else it.status,
                                 speedText = if (event.success) "Tamamlandi" else "--",
                                 etaText = if (event.success) "00:00" else "--",
                             )
@@ -509,11 +656,11 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
                         stopForegroundDownloadService()
                         
                         if (event.success) {
-                            val finalTitle = if (_uiState.value.previewTitle.isNotBlank()) _uiState.value.previewTitle else firstUrl
+                            val finalTitle = if (_formValidationState.value.previewTitle.isNotBlank()) _formValidationState.value.previewTitle else firstUrl
                             addToHistory(
                                 title = finalTitle,
                                 url = firstUrl,
-                                format = if (state.mode == DownloadMode.VIDEO) state.videoContainer else state.audioFormat,
+                                format = if (prefs.mode == DownloadMode.VIDEO) prefs.videoContainer else prefs.audioFormat,
                                 sizeBytes = 0L
                             )
                             telemetry("download_completed")
@@ -530,8 +677,8 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
         previewJob?.cancel()
         val url = extractFirstUrl(rawInput)
         if (url == null) {
-            updateState {
-                copy(
+            _formValidationState.update {
+                it.copy(
                     urlValidationState = UrlValidationState.IDLE,
                     urlStatusText = "YouTube baglantisini yapistirin.",
                     previewTitle = "",
@@ -543,8 +690,8 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
         }
 
         if (!isLikelyYoutubeUrl(url)) {
-            updateState {
-                copy(
+            _formValidationState.update {
+                it.copy(
                     urlValidationState = UrlValidationState.INVALID,
                     urlStatusText = "Baglanti gecersiz. YouTube URL girin.",
                     previewTitle = "",
@@ -558,8 +705,8 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
 
         previewJob = viewModelScope.launch {
             delay(450)
-            updateState {
-                copy(
+            _formValidationState.update {
+                it.copy(
                     urlValidationState = UrlValidationState.LOADING,
                     urlStatusText = "Baglanti kontrol ediliyor...",
                     previewTitle = "",
@@ -573,8 +720,8 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
             }
             result.onSuccess { preview -> applyPreview(preview) }
                 .onFailure { exc ->
-                    updateState {
-                        copy(
+                    _formValidationState.update {
+                        it.copy(
                             urlValidationState = UrlValidationState.ERROR,
                             urlStatusText = mapPreviewError(exc.message),
                             previewTitle = "",
@@ -594,113 +741,62 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
         } else {
             "Video hazir. Indirmeye baslayabilirsiniz."
         }
-        updateState {
-            copy(
-                urlValidationState = if (preview.isPlaylist) {
-                    UrlValidationState.PLAYLIST
-                } else {
-                    UrlValidationState.VALID
-                },
+        _formValidationState.update {
+            it.copy(
+                urlValidationState = if (preview.isPlaylist) UrlValidationState.PLAYLIST else UrlValidationState.VALID,
                 urlStatusText = status,
                 previewTitle = preview.title,
                 previewChannel = preview.channel,
-                previewItemCount = preview.itemCount,
+                previewItemCount = preview.itemCount
             )
         }
-        if (preview.isPlaylist) {
-            telemetry("url_valid_playlist")
-        } else {
-            telemetry("url_valid_video")
-        }
+        telemetry("url_preview_resolved")
     }
 
-    private fun mapPreviewError(message: String?): String {
-        val msg = message.orEmpty().lowercase()
+    private fun mapPreviewError(msg: String?): String {
+        val text = msg.orEmpty()
         return when {
-            msg.contains("unsupported url") || msg.contains("invalid") ->
-                "Baglanti gecersiz."
-            msg.contains("private") || msg.contains("members-only") || msg.contains("sign in") ->
-                "Videoya erisim sinirli. Gerekirse cookies kullanin."
-            msg.contains("403") ->
-                "Video erisilemiyor. Uyumluluk modunu (403) deneyin."
-            msg.contains("resolve host") || msg.contains("timeout") || msg.contains("timed out") ||
-                msg.contains("network") || msg.contains("connection") ->
-                "Baglantiya erisilemiyor. Interneti kontrol edin."
-            else ->
-                "Video bilgisi alinamadi. Tekrar deneyin."
+            text.contains("HTTP Error 403", ignoreCase = true) -> "403 Forbidden: YouTube erisimi engelledi. Cookies kullanmayi deneyin."
+            text.contains("HTTP Error 404", ignoreCase = true) -> "404 Not Found: Video bulunamadi."
+            text.contains("sign in to confirm", ignoreCase = true) -> "Yas kisitlamali video: Giris yapilmasi gerekiyor."
+            else -> "Baglanti cözülemedi: ${msg ?: "Sunucu hatasi"}"
         }
     }
 
-    private fun validate(state: DownloaderUiState): String? {
-        val firstUrl = extractFirstUrl(state.urlsText)
-            ?: return "err_empty_url"
-
-        if (!isLikelyYoutubeUrl(firstUrl)) {
-            return "err_invalid_url"
+    private fun validate(prefs: DownloadPreferencesState, validation: FormValidationState): String? {
+        if (validation.urlsText.trim().isEmpty()) {
+            return "Indirmek icin en az bir URL girin."
         }
-        if (state.outputTemplate.trim().isEmpty()) {
-            return "err_empty_template"
+        if (prefs.outputDir.trim().isEmpty()) {
+            return "Gecerli bir indirme konumu secin."
         }
-        if (state.outputDir.trim().isEmpty()) {
-            return "err_empty_output"
-        }
-        val targetDir = File(state.outputDir.trim())
+        val targetDir = File(prefs.outputDir.trim())
         if (!targetDir.exists() && !targetDir.mkdirs()) {
-            return "err_write_output"
+            return "Indirme klasörü olusturulamadi: ${prefs.outputDir}"
         }
-        if (targetDir.exists() && !targetDir.canWrite()) {
-            return "err_write_output"
+        if (!validateOptionalInt(prefs.maxDownloads, min = 1)) {
+            return "Maksimum indirme adeti pozitif bir sayi olmalidir."
         }
-        if (!validateOptionalInt(state.maxDownloads, min = 1)) {
-            return "err_max_dl"
+        if (!validateOptionalInt(prefs.retries, min = 0)) {
+            return "Tekrar deneme sayisi negatif olamaz."
         }
-        if (!validateOptionalInt(state.retries, min = 0)) {
-            return "err_retries"
+        if (!validateOptionalInt(prefs.concurrentFragments, min = 1)) {
+            return "Es zamanli parca sayisi en az 1 olmalidir."
         }
-        if (!validateOptionalInt(state.concurrentFragments, min = 1)) {
-            return "err_fragments"
-        }
-        if (state.mode == DownloadMode.VIDEO && state.videoPreset == "Ozel") {
-            val customHeight = state.customVideoHeight.trim()
-            if (customHeight.isEmpty() || customHeight.toIntOrNull() == null) {
-                return "err_custom_res"
+        if (prefs.mode == DownloadMode.VIDEO && prefs.videoPreset == "Ozel") {
+            val customHeight = prefs.customVideoHeight.trim()
+            if (customHeight.isEmpty() || customHeight.toIntOrNull() == null || customHeight.toInt() <= 0) {
+                return "Ozel video yüksekligi pozitif bir sayi olmalidir."
             }
         }
         return null
     }
 
-    private fun bootstrapEmbeddedBinaries(forceUpdate: Boolean = false) {
-        viewModelScope.launch {
-            updateState {
-                copy(
-                    binaryStatus = "yt-dlp kontrol ediliyor...",
-                    errorText = null,
-                )
-            }
-            val result = withContext(Dispatchers.IO) {
-                binaryInstaller.installOrReuse(forceUpdate = forceUpdate) { step ->
-                    _uiState.update { current -> current.copy(binaryStatus = step) }
-                }
-            }
-            updateState {
-                copy(
-                    executablePath = result.ytDlpPath ?: executablePath,
-                    ffmpegLocation = result.ffmpegDir ?: "",
-                    binaryStatus = "${result.message} (ABI: ${result.abi})",
-                    detectedAbi = result.abi,
-                )
-            }
-            appendLog("[bilgi] ${result.message} (ABI: ${result.abi})\n")
-        }
-    }
-
     private suspend fun copyUriToFile(uri: Uri, destination: File): Boolean = withContext(Dispatchers.IO) {
-        return@withContext try {
-            val app = getApplication<Application>()
+        val app = getApplication<Application>()
+        try {
             app.contentResolver.openInputStream(uri).use { input ->
-                if (input == null) {
-                    return@withContext false
-                }
+                if (input == null) return@withContext false
                 destination.outputStream().use { output ->
                     input.copyTo(output)
                 }
@@ -734,9 +830,7 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
                 "com.android.externalstorage.documents" -> {
                     val docId = DocumentsContract.getTreeDocumentId(uri)
                     val parts = docId.split(":")
-                    if (parts.isEmpty()) {
-                        return null
-                    }
+                    if (parts.isEmpty()) return null
 
                     val volume = parts[0].lowercase()
                     val relative = if (parts.size > 1) parts[1] else ""
@@ -785,9 +879,7 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
             )
         } catch (_: SecurityException) {
-            // Some providers do not support persistable permissions.
         } catch (_: IllegalArgumentException) {
-            // Uri may not expose persistable permission flags.
         }
     }
 
@@ -806,9 +898,7 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun validateOptionalInt(raw: String, min: Int): Boolean {
         val value = raw.trim()
-        if (value.isEmpty()) {
-            return true
-        }
+        if (value.isEmpty()) return true
         val intValue = value.toIntOrNull() ?: return false
         return intValue >= min
     }
@@ -827,69 +917,50 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
             line.contains("read-only file system", ignoreCase = true)
 
         if (writeAccessError) {
-            updateState {
-                copy(
-                    errorText = "Klasore yazilamiyor. Indirme konumunu degistirin veya depolama izni verin.",
-                    status = "Depolama hatasi",
+            _activeTaskState.update { it.copy(status = "Depolama hatasi") }
+            _formValidationState.update {
+                it.copy(
+                    errorText = "Klasore yazilamiyor. Indirme konumunu degistirin veya depolama izni verin."
                 )
             }
             telemetry("error_storage_write_denied")
         }
 
         if (speed != null || eta != null || playlistProgress != null) {
-            updateState {
-                copy(
-                    speedText = speed ?: speedText,
-                    etaText = eta ?: etaText,
-                    playlistProgressText = playlistProgress ?: playlistProgressText,
+            _activeTaskState.update {
+                it.copy(
+                    speedText = speed ?: it.speedText,
+                    etaText = eta ?: it.etaText,
+                    playlistProgressText = playlistProgress ?: it.playlistProgressText,
                 )
             }
         }
     }
 
     fun updateActiveTab(index: Int) {
-        updateState { copy(activeTab = index) }
+        _activeTab.value = index
         telemetry("tab_swapped_$index")
     }
 
-    fun loadHistory() {
-        val list = mutableListOf<com.baynuman.ytdownloader.data.DownloadRecord>()
-        try {
-            val jsonStr = prefs.getString("download_history", "[]") ?: "[]"
-            val array = org.json.JSONArray(jsonStr)
-            for (i in 0 until array.length()) {
-                val obj = array.getJSONObject(i)
-                list.add(com.baynuman.ytdownloader.data.DownloadRecord.fromJsonObject(obj))
-            }
-        } catch (_: Exception) {}
-        updateState { copy(historyRecords = list.sortedByDescending { it.downloadedAt }) }
-    }
-
     fun addToHistory(title: String, url: String, format: String, sizeBytes: Long) {
-        val id = java.util.UUID.randomUUID().toString()
-        val record = com.baynuman.ytdownloader.data.DownloadRecord(
-            id = id,
-            title = title,
-            url = url,
-            format = format,
-            downloadedAt = System.currentTimeMillis(),
-            fileSizeBytes = sizeBytes
-        )
-        val currentList = _uiState.value.historyRecords.toMutableList()
-        currentList.add(record)
-        
-        try {
-            val array = org.json.JSONArray()
-            currentList.forEach { array.put(it.toJsonObject()) }
-            prefs.edit().putString("download_history", array.toString()).apply()
-        } catch (_: Exception) {}
-        
-        updateState { copy(historyRecords = currentList.sortedByDescending { it.downloadedAt }) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val id = java.util.UUID.randomUUID().toString()
+            val entity = DownloadRecordEntity(
+                id = id,
+                title = title,
+                url = url,
+                format = format,
+                downloadedAt = System.currentTimeMillis(),
+                fileSizeBytes = sizeBytes
+            )
+            recordDao.insertRecord(entity)
+        }
     }
 
     fun clearHistory() {
-        prefs.edit().remove("download_history").apply()
-        updateState { copy(historyRecords = emptyList()) }
+        viewModelScope.launch(Dispatchers.IO) {
+            recordDao.clearAll()
+        }
         telemetry("history_cleared")
     }
 
@@ -930,14 +1001,10 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private fun appendLog(line: String) {
-        _uiState.update { current ->
+        _activeTaskState.update { current ->
             val next = (current.logs + line).takeLast(24_000)
             current.copy(logs = next)
         }
-    }
-
-    private inline fun updateState(block: DownloaderUiState.() -> DownloaderUiState) {
-        _uiState.update { current -> current.block() }
     }
 
     private fun telemetry(event: String) {

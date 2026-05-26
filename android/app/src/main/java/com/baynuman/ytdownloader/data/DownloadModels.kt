@@ -1,5 +1,7 @@
 package com.baynuman.ytdownloader.data
 
+import com.baynuman.ytdownloader.data.algorithms.MicroClip
+
 const val DEFAULT_OUTPUT_TEMPLATE = "%(title)s [%(id)s].%(ext)s"
 const val YOUTUBE_FALLBACK_EXTRACTOR_ARGS = "youtube:player-client=tv"
 
@@ -74,6 +76,7 @@ data class DownloadRequest(
     val concurrentFragments: Int? = null,
     val extraArgs: String = "",
     val youtube403Fallback: Boolean = true,
+    val clips: List<MicroClip> = emptyList(),
 )
 
 sealed interface DownloadEvent {
