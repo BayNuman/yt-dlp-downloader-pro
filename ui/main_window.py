@@ -777,53 +777,125 @@ class MainWindow(ctk.CTk):
         self.queue_panel.refresh_translations()
         self.progress_panel.refresh_translations()
 
-    def _on_update_found(self, current, latest):
+    def _on_update_found(self, payload):
         # Schedule the UI configuration inside the safe main event loop
-        self.after(0, lambda: self._show_update_badge(current, latest))
+        self.after(0, lambda: self._show_update_badge(payload))
 
-    def _show_update_badge(self, current, latest):
+    def _show_update_badge(self, payload):
+        self.active_update_payload = payload
         lang = self.app_state.current_lang
-        btn_text = f"🚀 Motoru Güncelle / Update Core (v{latest})" if lang == "tr" else f"🚀 Update Core / Motoru Güncelle (v{latest})"
+        
+        if payload.action == "downgrade":
+            btn_text = f"⚠️ Sürüm Düşür / Downgrade Core (v{payload.latest_version})" if lang == "tr" else f"⚠️ Downgrade Core / Sürüm Düşür (v{payload.latest_version})"
+        else:
+            btn_text = f"🚀 Motoru Güncelle / Update Core (v{payload.latest_version})" if lang == "tr" else f"🚀 Update Core / Motoru Güncelle (v{payload.latest_version})"
+            
         self.btn_update_warning.configure(text=btn_text)
         self.btn_update_warning.grid(row=1, column=0, columnspan=2, padx=20, pady=(0, 16), sticky="ew")
 
     def perform_update(self):
         lang = self.app_state.current_lang
+        payload = getattr(self, "active_update_payload", None)
+        
+        if not payload:
+            return
+            
         status_text = "Güncelleniyor... Lütfen bekleyin." if lang == "tr" else "Upgrading... Please wait."
         self.btn_update_warning.configure(text=status_text, state="disabled")
         
         import subprocess
         import sys
         import threading
+        import urllib.request
+        import os
+        from core.updater import calculate_sha256
         
         def _run():
             creationflags = 0
             if sys.platform == "win32":
                 creationflags = subprocess.CREATE_NO_WINDOW
                 
+            # If we don't have a download URL (Plan B Fallback / PyPI), do standard pip upgrade
+            if payload.is_fallback or not payload.download_url:
+                try:
+                    result = subprocess.run(
+                        [sys.executable, "-m", "pip", "install", "-U", "yt-dlp"],
+                        capture_output=True,
+                        creationflags=creationflags,
+                        shell=False
+                    )
+                    success = (result.returncode == 0)
+                    msg = "Fallback pip upgrade finished."
+                except Exception as e:
+                    success = False
+                    msg = str(e)
+                self.after(0, lambda: self._on_upgrade_complete(success, msg))
+                return
+                
+            # Tier 1 Custom Update Broker Flow
             try:
+                # 1. Download target archive
+                temp_filename = f"yt_dlp_update_{payload.latest_version}.tar.gz"
+                temp_path = os.path.join(self.scratch_dir, temp_filename)
+                
+                print(f"[Updater] Downloading verified update package: {payload.download_url} -> {temp_path}")
+                req = urllib.request.Request(payload.download_url, headers={'User-Agent': 'yt-dlp-Pro-Desktop'})
+                with urllib.request.urlopen(req, timeout=10.0) as response, open(temp_path, "wb") as out_file:
+                    out_file.write(response.read())
+                    
+                # 2. Cryptographic Integrity Verification (Supply Chain Protection)
+                if payload.sha256:
+                    computed_hash = calculate_sha256(temp_path)
+                    print(f"[Updater] Verifying SHA-256 Checksum... Expected: {payload.sha256}, Computed: {computed_hash}")
+                    
+                    if computed_hash.lower() != payload.sha256.lower():
+                        # Hash mismatch! Supply chain attack intercepted!
+                        print("[Updater] CRITICAL ERROR: SHA-256 Checksum Mismatch! Aborting update for security.")
+                        try:
+                            os.remove(temp_path)
+                        except Exception:
+                            pass
+                        err_msg = "Güvenlik İhlali: SHA-256 Bütünlük Doğrulaması Başarısız! (Security Breach: Checksum Mismatch)"
+                        self.after(0, lambda: self._on_upgrade_complete(False, err_msg))
+                        return
+                
+                # 3. Secure Installation
+                # Install the verified package archive securely without fetching unresolved dependencies from web
                 result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "-U", "yt-dlp"],
+                    [sys.executable, "-m", "pip", "install", "--no-deps", temp_path],
                     capture_output=True,
                     creationflags=creationflags,
                     shell=False
                 )
                 success = (result.returncode == 0)
-            except Exception:
-                success = False
+                msg = result.stderr.decode("utf-8", errors="replace") if not success else "Success"
                 
-            self.after(0, lambda: self._on_upgrade_complete(success))
+                # Cleanup downloaded archive
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+                    
+            except Exception as e:
+                success = False
+                msg = str(e)
+                
+            self.after(0, lambda: self._on_upgrade_complete(success, msg))
             
         threading.Thread(target=_run, daemon=True).start()
 
-    def _on_upgrade_complete(self, success: bool):
+    def _on_upgrade_complete(self, success: bool, message: str = ""):
         lang = self.app_state.current_lang
         if success:
             success_text = "Güncelleme Tamamlandı! Yeniden Başlatın." if lang == "tr" else "Upgrade Finished! Please Restart."
             fg_color = "#10b981"
         else:
-            success_text = "Güncelleme Başarısız!" if lang == "tr" else "Upgrade Failed!"
+            if "Güvenlik İhlali" in message or "Security Breach" in message:
+                success_text = "Güvenlik Engeli: SHA-256 Eşleşmedi!" if lang == "tr" else "Security Block: Hash Mismatch!"
+            else:
+                success_text = "Güncelleme Başarısız!" if lang == "tr" else "Upgrade Failed!"
             fg_color = "#f43f5e"
+            print(f"[Updater] Upgrade failed with message: {message}")
             
         self.btn_update_warning.configure(
             text=success_text,
