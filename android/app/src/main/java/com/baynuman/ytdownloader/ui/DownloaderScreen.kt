@@ -1193,7 +1193,7 @@ private fun AdvancedSection(
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            val tabs = listOf("tab_codecs", "tab_limits", "tab_flags")
+            val tabs = listOf("tab_codecs", "tab_limits", "tab_flags", "sec_trimming")
             tabs.forEachIndexed { index, tabKey ->
                 val selected = activeTab == index
                 Box(
@@ -1340,6 +1340,28 @@ private fun AdvancedSection(
                     checked = state.youtube403Fallback,
                     onCheckedChange = viewModel::updateYoutube403Fallback,
                 )
+            }
+            3 -> { // Video Trimming section
+                ToggleRow(
+                    text = Translations.get("lbl_trim_enable", lang),
+                    helper = Translations.get("sec_trimming", lang),
+                    checked = state.clipEnabled,
+                    onCheckedChange = viewModel::updateClipEnabled,
+                )
+                if (state.clipEnabled) {
+                    LabeledTextField(
+                        label = Translations.get("lbl_trim_start", lang),
+                        value = state.clipStart,
+                        placeholder = "00:00",
+                        onValueChange = viewModel::updateClipStart,
+                    )
+                    LabeledTextField(
+                        label = Translations.get("lbl_trim_end", lang),
+                        value = state.clipEnd,
+                        placeholder = "00:00",
+                        onValueChange = viewModel::updateClipEnd,
+                    )
+                }
             }
         }
     }

@@ -114,7 +114,12 @@ object Translations {
             "no_history" to "No download history yet.",
             "share_path" to "Copy Path",
             "share_file" to "Share File",
-            "open_folder_btn" to "Open Folder"
+            "open_folder_btn" to "Open Folder",
+            "sec_trimming" to "Video Trimming",
+            "lbl_trim_enable" to "Enable Trimming",
+            "lbl_trim_start" to "Start Time",
+            "lbl_trim_end" to "End Time",
+            "err_trim_invalid" to "Invalid trim range! Ensure formats are MM:SS or HH:MM:SS and start < end."
         ),
         "tr" to mapOf(
             "title" to "yt-dl Pro Downloader",
@@ -226,7 +231,12 @@ object Translations {
             "no_history" to "Henüz indirme geçmişi yok.",
             "share_path" to "Yolu Kopyala",
             "share_file" to "Dosyayı Paylaş",
-            "open_folder_btn" to "Klasörü Aç"
+            "open_folder_btn" to "Klasörü Aç",
+            "sec_trimming" to "Klip Kırpma",
+            "lbl_trim_enable" to "Kırpmayı Aktif Et",
+            "lbl_trim_start" to "Başlangıç Zamanı",
+            "lbl_trim_end" to "Bitiş Zamanı",
+            "err_trim_invalid" to "Kırpma aralığı geçersiz! Sürelerin SS:DD veya DD:SS olmasına ve başlangıç < bitiş olmasına dikkat edin."
         ),
         "es" to mapOf(
             "title" to "yt-dl Pro Downloader",
@@ -338,7 +348,12 @@ object Translations {
             "no_history" to "Aún no hay historial de descargas.",
             "share_path" to "Copiar Ruta",
             "share_file" to "Compartir Archivo",
-            "open_folder_btn" to "Abrir Carpeta"
+            "open_folder_btn" to "Abrir Carpeta",
+            "sec_trimming" to "Recorte de Video",
+            "lbl_trim_enable" to "Activar Recorte",
+            "lbl_trim_start" to "Hora de Inicio",
+            "lbl_trim_end" to "Hora de Fin",
+            "err_trim_invalid" to "¡Rango de recorte no válido! Asegúrese de que los formatos sean MM:SS o HH:MM:SS y que inicio < fin."
         )
     )
 

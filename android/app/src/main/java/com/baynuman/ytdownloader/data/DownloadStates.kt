@@ -29,7 +29,10 @@ data class DownloadPreferencesState(
     val thumbnail: Boolean = false,
     val subtitles: Boolean = false,
     val autoSubtitles: Boolean = false,
-    val outputTemplate: String = ""
+    val outputTemplate: String = "",
+    val clipEnabled: Boolean = false,
+    val clipStart: String = "00:00",
+    val clipEnd: String = "00:00"
 )
 
 data class ActiveTaskState(

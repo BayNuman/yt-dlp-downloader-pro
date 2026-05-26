@@ -44,4 +44,28 @@ object ClipOptimizer {
         merged.add(MacroClip(currentStart, currentEnd, currentSubClips.toList()))
         return merged
     }
+
+    fun parseTimeToSeconds(s: String): Float? {
+        val clean = s.trim()
+        if (clean.isEmpty()) return null
+        if (":" in clean) {
+            val parts = clean.split(":")
+            return try {
+                if (parts.size == 2) {
+                    parts[0].toInt() * 60f + parts[1].toFloat()
+                } else if (parts.size == 3) {
+                    parts[0].toInt() * 3600f + parts[1].toInt() * 60f + parts[2].toFloat()
+                } else {
+                    null
+                }
+            } catch (e: NumberFormatException) {
+                null
+            }
+        }
+        return try {
+            clean.toFloat()
+        } catch (e: NumberFormatException) {
+            null
+        }
+    }
 }

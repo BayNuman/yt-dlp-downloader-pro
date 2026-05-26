@@ -109,6 +109,9 @@ data class DownloaderUiState(
     val clipTextDetected: String = "",
     val activeTab: Int = 0,
     val historyRecords: List<DownloadRecord> = emptyList(),
+    val clipEnabled: Boolean = false,
+    val clipStart: String = "00:00",
+    val clipEnd: String = "00:00"
 )
 
 data class RuntimeState(
@@ -218,7 +221,10 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
             isBatchMode = prefs.isBatchMode,
             clipTextDetected = validation.clipTextDetected,
             activeTab = runtime.activeTab,
-            historyRecords = runtime.historyRecords
+            historyRecords = runtime.historyRecords,
+            clipEnabled = prefs.clipEnabled,
+            clipStart = prefs.clipStart,
+            clipEnd = prefs.clipEnd
         )
     }.stateIn(
         scope = viewModelScope,
@@ -484,6 +490,9 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
     fun updateExtraArgs(value: String) = _preferencesState.update { it.copy(extraArgs = value) }
     fun updateYoutube403Fallback(value: Boolean) = _preferencesState.update { it.copy(youtube403Fallback = value) }
     fun updateOutputTemplate(value: String) = _preferencesState.update { it.copy(outputTemplate = value) }
+    fun updateClipEnabled(value: Boolean) = _preferencesState.update { it.copy(clipEnabled = value) }
+    fun updateClipStart(value: String) = _preferencesState.update { it.copy(clipStart = value) }
+    fun updateClipEnd(value: String) = _preferencesState.update { it.copy(clipEnd = value) }
     
     fun updateMediaPermissionsStatus(value: Boolean) {
         val previous = _runtimeState.value.mediaPermissionsGranted
@@ -632,6 +641,23 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
 
         val urls = parseUrls(validation.urlsText)
         val runtime = _runtimeState.value
+
+        // Parse micro clips if enabled
+        val clipsList = if (prefs.clipEnabled) {
+            val startSec = com.baynuman.ytdownloader.data.algorithms.ClipOptimizer.parseTimeToSeconds(prefs.clipStart)
+            val endSec = com.baynuman.ytdownloader.data.algorithms.ClipOptimizer.parseTimeToSeconds(prefs.clipEnd)
+            if (startSec == null || endSec == null || startSec >= endSec) {
+                val errorMsg = com.baynuman.ytdownloader.ui.theme.Translations.get("err_trim_invalid", runtime.currentLanguage)
+                _formValidationState.update { it.copy(errorText = errorMsg) }
+                _activeTaskState.update { it.copy(status = "Hazir") }
+                telemetry("start_download_blocked_trim")
+                return
+            }
+            listOf(com.baynuman.ytdownloader.data.algorithms.MicroClip(start = startSec, end = endSec, title = "Clip"))
+        } else {
+            emptyList()
+        }
+
         val request = DownloadRequest(
             urls = urls,
             outputDir = prefs.outputDir,
@@ -661,6 +687,7 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
             extraArgs = prefs.extraArgs,
             youtube403Fallback = prefs.youtube403Fallback,
             archiveFile = File(getApplication<Application>().filesDir, "download_archive.txt").absolutePath,
+            clips = clipsList
         )
 
         _activeTaskState.update {
