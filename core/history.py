@@ -35,6 +35,19 @@ def connect_db() -> sqlite3.Connection:
         pass
     return conn
 
+_local = threading.local()
+
+def get_read_connection() -> sqlite3.Connection:
+    if not hasattr(_local, "conn") or _local.conn is None:
+        _local.conn = connect_db()
+        _local.conn.row_factory = sqlite3.Row
+    try:
+        _local.conn.execute("SELECT 1")
+    except Exception:
+        _local.conn = connect_db()
+        _local.conn.row_factory = sqlite3.Row
+    return _local.conn
+
 class DatabaseWriter:
     def __init__(self):
         self._queue: queue.Queue = queue.Queue()
@@ -156,8 +169,7 @@ def get_all_downloads() -> List[Dict[str, Any]]:
     db_path = get_db_path()
     if not db_path.exists():
         return []
-    conn = connect_db()
-    conn.row_factory = sqlite3.Row
+    conn = get_read_connection()
     cursor = conn.cursor()
     downloads = []
     try:
@@ -167,6 +179,5 @@ def get_all_downloads() -> List[Dict[str, Any]]:
             downloads.append(dict(row))
     except Exception as e:
         print(f"[!] SQLite Fetch Error: {e}")
-    finally:
-        conn.close()
     return downloads
+

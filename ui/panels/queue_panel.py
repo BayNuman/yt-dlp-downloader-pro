@@ -33,6 +33,9 @@ class QueuePanel(ctk.CTkFrame):
         # Dynamic trackers to allow high-performance in-memory progress updates
         self.card_status_labels = {}
         self.card_dot_labels = {}
+        # Smart diffing: track current card composition to avoid unnecessary rebuilds
+        self._active_card_ids = []
+        self._active_tab_snapshot = None
         
         self.grid_columnconfigure(0, weight=1)
         self._build_ui()
@@ -85,10 +88,14 @@ class QueuePanel(ctk.CTkFrame):
         self.update_list()
 
     def _on_tab_changed(self, choice):
-        # Determine tab kind based on string (tr/en/es segmented values)
-        lang = self.app_state.current_lang
-        
-        if choice == TRANSLATIONS[lang]["tab_history"]:
+        # Determine tab kind based on deterministic language-agnostic index
+        values = self.tab_selector.cget("values")
+        try:
+            idx = values.index(choice)
+        except ValueError:
+            idx = 0
+            
+        if idx == 1:
             self.tab_selector_var.set("history")
             self.btn_clear_history.grid(row=2, column=0, padx=16, pady=(0, 16), sticky="e")
         else:
@@ -112,24 +119,46 @@ class QueuePanel(ctk.CTkFrame):
         if task_id in self.card_status_labels:
             lbl = self.card_status_labels[task_id]
             lang = self.app_state.current_lang
-            active_str = "İndiriliyor" if lang == "tr" else ("Descargando" if lang == "es" else "Downloading")
+            active_str = TRANSLATIONS[lang].get("lbl_task_downloading", "Downloading")
             lbl.configure(text=f"{active_str} ({percent:.1f}% - {speed})")
 
             # Update dot color to active indigo dynamically
             if task_id in self.card_dot_labels:
                 self.card_dot_labels[task_id].configure(text_color=THEME_ACCENT_INDIGO)
 
-    def update_list(self):
-        # Clear existing list UI widgets
-        for child in self.scroll_frame.winfo_children():
-            child.destroy()
+    def _get_translated_status(self, item, lang: str) -> str:
+        """Return localized status string using lbl_task_ keys from TRANSLATIONS."""
+        key = f"lbl_task_{item.status_code.value}"
+        return TRANSLATIONS[lang].get(key, item.status)
 
+    def update_list(self):
         tab = self.tab_selector_var.get()
         lang = self.app_state.current_lang
 
         if tab == "active":
+            # Smart diffing: compute current card IDs and compare with snapshot
+            current_ids = [item.id for item in self.app_state.queue_list]
+            if current_ids == self._active_card_ids and self._active_tab_snapshot == "active":
+                # Composition unchanged — only update text content of existing cards
+                for item in self.app_state.queue_list:
+                    status_text = self._get_translated_status(item, lang)
+                    dot_color = self._dot_color_for_status(item.status_code)
+                    if item.status_code == TaskStatus.DOWNLOADING:
+                        dl_str = TRANSLATIONS[lang].get("lbl_task_downloading", "Downloading")
+                        status_text = f"{dl_str} ({item.percent:.1f}% - {item.speed})"
+                    if item.id in self.card_status_labels:
+                        self.card_status_labels[item.id].configure(text=status_text)
+                    if item.id in self.card_dot_labels:
+                        self.card_dot_labels[item.id].configure(text_color=dot_color)
+                return
+
+            # Composition changed — full rebuild required
+            for child in self.scroll_frame.winfo_children():
+                child.destroy()
             self.card_status_labels.clear()
             self.card_dot_labels.clear()
+            self._active_card_ids = current_ids
+            self._active_tab_snapshot = "active"
 
             # RENDER ACTIVE QUEUE
             if not self.app_state.queue_list:
@@ -155,16 +184,7 @@ class QueuePanel(ctk.CTkFrame):
                 card.grid_columnconfigure((0, 2, 3, 4), weight=0)
 
                 # Dot indicator color
-                dot_color = THEME_TEXT_SECONDARY
-                status_str = item.status
-                if item.status_code == TaskStatus.PENDING:
-                    dot_color = THEME_ACCENT_BLUE
-                elif item.status_code == TaskStatus.DOWNLOADING:
-                    dot_color = THEME_ACCENT_INDIGO
-                elif item.status_code == TaskStatus.COMPLETED:
-                    dot_color = THEME_ACCENT_GREEN
-                elif item.status_code in (TaskStatus.FAILED, TaskStatus.CANCELLED):
-                    dot_color = THEME_ACCENT_RED
+                dot_color = self._dot_color_for_status(item.status_code)
 
                 dot_lbl = ctk.CTkLabel(card, text="●", text_color=dot_color, font=ctk.CTkFont(size=14))
                 dot_lbl.grid(row=0, column=0, padx=(12, 6))
@@ -182,10 +202,11 @@ class QueuePanel(ctk.CTkFrame):
                 badge_lbl = ctk.CTkLabel(card, text=f"[{preset_name}]", text_color=THEME_CARD_SUBTITLE, font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"))
                 badge_lbl.grid(row=0, column=2, padx=10)
 
-                # Status label
-                display_status = status_str
+                # Status label (using translations)
+                display_status = self._get_translated_status(item, lang)
                 if item.status_code == TaskStatus.DOWNLOADING:
-                    display_status = f"{item.status} ({item.percent:.1f}% - {item.speed})"
+                    dl_str = TRANSLATIONS[lang].get("lbl_task_downloading", "Downloading")
+                    display_status = f"{dl_str} ({item.percent:.1f}% - {item.speed})"
 
                 status_lbl = ctk.CTkLabel(card, text=display_status, font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), text_color=THEME_TEXT_SECONDARY)
                 status_lbl.grid(row=0, column=3, padx=10)
@@ -223,6 +244,12 @@ class QueuePanel(ctk.CTkFrame):
                 rem_btn.grid(row=0, column=4, padx=(6, 12))
 
         else:
+            # History tab — always reset diffing state
+            self._active_card_ids = []
+            self._active_tab_snapshot = "history"
+            for child in self.scroll_frame.winfo_children():
+                child.destroy()
+
             # RENDER PERSISTENT HISTORY FROM SQLITE
             downloads = get_all_downloads()
             if not downloads:
@@ -317,6 +344,19 @@ class QueuePanel(ctk.CTkFrame):
                     command=lambda p=file_path: self._open_native_folder(p)
                 )
                 folder_btn.grid(row=0, column=5, padx=(4, 12))
+
+    @staticmethod
+    def _dot_color_for_status(status_code: TaskStatus) -> str:
+        """Map TaskStatus enum to dot indicator color."""
+        if status_code == TaskStatus.PENDING:
+            return THEME_ACCENT_BLUE
+        elif status_code == TaskStatus.DOWNLOADING:
+            return THEME_ACCENT_INDIGO
+        elif status_code == TaskStatus.COMPLETED:
+            return THEME_ACCENT_GREEN
+        elif status_code in (TaskStatus.FAILED, TaskStatus.CANCELLED):
+            return THEME_ACCENT_RED
+        return THEME_TEXT_SECONDARY
 
     def _open_native_folder(self, file_path_str: str):
         # Bug Fix 3: Cross-platform native folder opening (instead of os.startfile)

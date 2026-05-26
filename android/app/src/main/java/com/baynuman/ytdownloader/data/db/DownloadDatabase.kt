@@ -20,7 +20,6 @@ abstract class DownloadDatabase : RoomDatabase() {
                     DownloadDatabase::class.java,
                     "download_records_database"
                 )
-                .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
                 instance

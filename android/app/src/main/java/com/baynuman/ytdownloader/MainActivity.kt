@@ -21,14 +21,12 @@ import com.baynuman.ytdownloader.ui.DownloaderViewModel
 import com.baynuman.ytdownloader.ui.theme.YtDownloaderTheme
 
 class MainActivity : ComponentActivity() {
-    private var downloaderViewModelRef: DownloaderViewModel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContent {
             val downloaderViewModel: DownloaderViewModel = viewModel()
-            downloaderViewModelRef = downloaderViewModel
             val state by downloaderViewModel.uiState.collectAsStateWithLifecycle()
 
             YtDownloaderTheme(darkTheme = state.isDarkTheme) {
@@ -93,7 +91,9 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        downloaderViewModelRef?.setIncomingSharedText(extractSharedText(intent))
+        extractSharedText(intent)?.let { text ->
+            DownloaderViewModel.sharedUrlBuffer.tryEmit(text)
+        }
     }
 }
 

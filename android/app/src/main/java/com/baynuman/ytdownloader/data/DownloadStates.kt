@@ -17,11 +17,19 @@ data class DownloadPreferencesState(
     val downloadArchive: Boolean = true,
     val cookiesFile: String = "",
     val browserCookies: String = "Kapali",
+    val restrictNames: Boolean = false,
+    val playlistItems: String = "",
+    val maxDownloads: String = "",
     val retries: String = "",
     val concurrentFragments: String = "",
     val extraArgs: String = "",
     val youtube403Fallback: Boolean = true,
-    val outputDir: String = ""
+    val outputDir: String = "",
+    val metadata: Boolean = true,
+    val thumbnail: Boolean = false,
+    val subtitles: Boolean = false,
+    val autoSubtitles: Boolean = false,
+    val outputTemplate: String = ""
 )
 
 data class ActiveTaskState(

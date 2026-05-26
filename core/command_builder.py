@@ -1,8 +1,22 @@
 # core/command_builder.py
 import sys
 import shlex
+import os
+import atexit
 from pathlib import Path
 from core.clip import parse_time_to_seconds
+
+_created_temp_files = []
+
+def _cleanup_temp_files():
+    for path in _created_temp_files:
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+
+atexit.register(_cleanup_temp_files)
 
 VIDEO_PRESET_HEIGHT = {
     "Maksimum (Best)": "Best",
@@ -171,7 +185,8 @@ def build_command(item, output_dir: str) -> list[str]:
         cmd.extend(["--limit-rate", rate_limit])
 
     if safe_get(item, "archive"):
-        archive_file = str(Path(out_dir) / ".downloaded_archive.txt")
+        from core.history import get_app_data_dir
+        archive_file = str(get_app_data_dir() / "download_archive.txt")
         cmd.extend(["--download-archive", archive_file])
 
     retries = str(safe_get(item, "retries", "")).strip()

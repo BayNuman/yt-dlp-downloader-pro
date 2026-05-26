@@ -32,21 +32,31 @@ def get_default_presets() -> dict:
         }
     }
 
-def load_presets() -> dict:
+_presets_cache = None
+
+def load_presets(force_reload: bool = False) -> dict:
+    global _presets_cache
+    if _presets_cache is not None and not force_reload:
+        return _presets_cache
+        
     path = get_presets_file_path()
     if not path.exists():
         # Write default presets first time
         defaults = get_default_presets()
         save_all_presets(defaults)
+        _presets_cache = defaults
         return defaults
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            _presets_cache = json.load(f)
+            return _presets_cache
     except Exception as e:
         print(f"[!] Error loading presets: {e}")
         return get_default_presets()
 
 def save_all_presets(presets: dict):
+    global _presets_cache
+    _presets_cache = presets
     path = get_presets_file_path()
     try:
         with open(path, "w", encoding="utf-8") as f:
@@ -64,3 +74,4 @@ def delete_preset(name: str):
     if name in presets:
         del presets[name]
         save_all_presets(presets)
+

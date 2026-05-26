@@ -36,6 +36,11 @@ class YtDlpRunner(
     private var activeSubprocess: Process? = null
 
     suspend fun run(request: DownloadRequest, onEvent: (DownloadEvent) -> Unit): Unit = withContext(Dispatchers.IO) {
+        if (cancelRequested) {
+            onEvent(DownloadEvent.Status("Iptal edildi"))
+            onEvent(DownloadEvent.Finished(success = false, exitCode = -1))
+            return@withContext
+        }
         cancelRequested = false
         activeSubprocess = null
 
@@ -128,24 +133,27 @@ class YtDlpRunner(
             }
 
             // Since yt-dlp finished successfully, let's locate the downloaded file
-            val downloadedFile = findDownloadedFile(outputDir)
+            val downloadedFile = findDownloadedFile(outputDir, result.lastDownloadedFilePath)
             if (downloadedFile == null || !downloadedFile.exists()) {
                 throw PipelineException.YtDlpExecutionException("Indirilen dosya bulunamadi.")
             }
             tempFile = downloadedFile
+
+            var finalSize = 0L
 
             // Stage 3: FFmpeg Slicing & Profiling (LeetCode 56 Consolidated Clips)
             if (isClipsOperation) {
                 onEvent(DownloadEvent.Status("Videolar kesiliyor..."))
                 
                 // Check storage capacity for slicing (Estimated requirement: 2 * size of downloaded file)
-                val expectedSizeMb = (downloadedFile.length() * 2) / (1024 * 1024)
+                val expectedSizeMb = (downloadedFile.length() / (1024 * 1024)) * 2
                 checkStorageCapacity(normalizedRequest.outputDir, minMbRequired = maxOf(50, expectedSizeMb))
 
                 val microFiles = runFFmpegSlicing(downloadedFile, macroClips, onEvent)
                 
                 // Lossless Merge of Sliced Clips
                 val mergedFile = runFFmpegConcat(microFiles, outputDir, onEvent)
+                finalSize = mergedFile.length()
                 
                 // Cleanup sliced parts if merge was successful
                 microFiles.forEach { f -> if (f.exists()) f.delete() }
@@ -153,13 +161,14 @@ class YtDlpRunner(
                 // Notify scan for the final merged file
                 scanToMediaStore(mergedFile, onEvent)
             } else {
+                finalSize = downloadedFile.length()
                 // Single standard file download completion
                 scanToMediaStore(downloadedFile, onEvent)
             }
 
             onEvent(DownloadEvent.Progress(1f))
             onEvent(DownloadEvent.Status("Indirme tamamlandi"))
-            onEvent(DownloadEvent.Finished(success = true, exitCode = 0))
+            onEvent(DownloadEvent.Finished(success = true, exitCode = 0, sizeBytes = finalSize))
             logRunnerEvent("download_pipeline_success")
 
         } catch (e: PipelineException.InsufficientStorageException) {
@@ -222,7 +231,14 @@ class YtDlpRunner(
         }
     }
 
-    private fun findDownloadedFile(outputDir: File): File? {
+    private fun findDownloadedFile(outputDir: File, parsedPath: String?): File? {
+        if (parsedPath != null) {
+            val file = File(parsedPath)
+            val absoluteFile = if (file.isAbsolute) file else File(outputDir, parsedPath)
+            if (absoluteFile.exists() && absoluteFile.isFile) {
+                return absoluteFile
+            }
+        }
         // Resolve latest downloaded file by checking files sorted by modified date
         return outputDir.listFiles()
             ?.filter { it.isFile && !it.name.endsWith(".tmp") && !it.name.endsWith(".part") }
@@ -230,19 +246,34 @@ class YtDlpRunner(
     }
 
     private fun getFFmpegFile(): File {
-        return try {
+        try {
             val youtubeDLClass = com.yausername.youtubedl_android.YoutubeDL::class.java
             val ffmpegPathField = youtubeDLClass.getDeclaredField("ffmpegPath")
             ffmpegPathField.isAccessible = true
             val file = ffmpegPathField.get(null) as? File
             if (file != null && file.exists()) {
-                file
-            } else {
-                File(appContext.noBackupFilesDir, "ffmpeg/ffmpeg")
+                return file
             }
         } catch (e: Exception) {
-            File(appContext.noBackupFilesDir, "ffmpeg/ffmpeg")
+            Log.w(RUNNER_TAG, "Reflection failed to resolve FFmpeg path", e)
         }
+
+        // Multi-path fallback manual resolution
+        val possiblePaths = listOf(
+            File(appContext.noBackupFilesDir, "ffmpeg/ffmpeg"),
+            File(appContext.noBackupFilesDir, "ffmpeg"),
+            File(appContext.filesDir, "no_backup/ffmpeg/ffmpeg"),
+            File(appContext.filesDir, "no_backup/ffmpeg"),
+            File(appContext.filesDir, "ffmpeg/ffmpeg"),
+            File(appContext.filesDir, "ffmpeg")
+        )
+        for (path in possiblePaths) {
+            if (path.exists() && path.isFile) {
+                return path
+            }
+        }
+
+        return File(appContext.noBackupFilesDir, "ffmpeg/ffmpeg")
     }
 
     private suspend fun runFFmpegCommand(cmd: List<String>, onEvent: (DownloadEvent) -> Unit): Int = withContext(Dispatchers.IO) {
@@ -386,6 +417,27 @@ class YtDlpRunner(
         }
     }
 
+    private fun parsePathFromLine(line: String): String? {
+        return when {
+            line.contains("[download] Destination: ") -> {
+                line.substringAfter("[download] Destination: ").trim()
+            }
+            line.contains(" has already been downloaded") && line.contains("[download] ") -> {
+                line.substringAfter("[download] ").substringBefore(" has already been downloaded").trim()
+            }
+            line.contains("[Merger] Merging formats into \"") -> {
+                line.substringAfter("[Merger] Merging formats into \"").substringBefore("\"").trim()
+            }
+            line.contains("[VideoConvertor] Converting video from") && line.contains(" to \"") -> {
+                line.substringAfter(" to \"").substringBefore("\"").trim()
+            }
+            line.contains("[ExtractAudio] Destination: ") -> {
+                line.substringAfter("[ExtractAudio] Destination: ").trim()
+            }
+            else -> null
+        }
+    }
+
     private fun runCommand(
         commandWithUrls: List<String>,
         urls: List<String>,
@@ -397,6 +449,7 @@ class YtDlpRunner(
         var sawHttp403 = false
         var sawOutdatedWarning = false
         var canceled = false
+        var lastDownloadedFilePath: String? = null
 
         val options = if (urls.isEmpty()) {
             commandWithUrls
@@ -414,6 +467,10 @@ class YtDlpRunner(
                 val safeLine = line ?: ""
                 if (safeLine.isNotBlank()) {
                     onEvent(DownloadEvent.LogLine("$safeLine\n"))
+                    val parsedPath = parsePathFromLine(safeLine)
+                    if (parsedPath != null) {
+                        lastDownloadedFilePath = parsedPath
+                    }
                     if (safeLine.contains("HTTP Error 403: Forbidden")) {
                         sawHttp403 = true
                     }
@@ -437,6 +494,10 @@ class YtDlpRunner(
                 }
             }
             mergedLogs.lineSequence().forEach { line ->
+                val parsedPath = parsePathFromLine(line)
+                if (parsedPath != null) {
+                    lastDownloadedFilePath = parsedPath
+                }
                 if (line.contains("HTTP Error 403: Forbidden")) {
                     sawHttp403 = true
                 }
@@ -450,6 +511,7 @@ class YtDlpRunner(
                 sawHttp403 = sawHttp403,
                 sawOutdatedWarning = sawOutdatedWarning,
                 canceled = false,
+                lastDownloadedFilePath = lastDownloadedFilePath,
             )
         } catch (_: YoutubeDL.CanceledException) {
             canceled = true
@@ -458,6 +520,7 @@ class YtDlpRunner(
                 sawHttp403 = sawHttp403,
                 sawOutdatedWarning = sawOutdatedWarning,
                 canceled = true,
+                lastDownloadedFilePath = lastDownloadedFilePath,
             )
         } catch (exc: YoutubeDLException) {
             val text = exc.message ?: "yt-dlp calistirilamadi"
@@ -473,6 +536,7 @@ class YtDlpRunner(
                 sawHttp403 = sawHttp403,
                 sawOutdatedWarning = sawOutdatedWarning,
                 canceled = canceled,
+                lastDownloadedFilePath = lastDownloadedFilePath,
             )
         } catch (exc: InterruptedException) {
             Thread.currentThread().interrupt()
@@ -482,6 +546,7 @@ class YtDlpRunner(
                 sawHttp403 = sawHttp403,
                 sawOutdatedWarning = sawOutdatedWarning,
                 canceled = true,
+                lastDownloadedFilePath = lastDownloadedFilePath,
             )
         } finally {
             activeProcessId = null
@@ -493,6 +558,7 @@ class YtDlpRunner(
         val sawHttp403: Boolean,
         val sawOutdatedWarning: Boolean,
         val canceled: Boolean,
+        val lastDownloadedFilePath: String? = null,
     )
 
     private fun logRunnerEvent(event: String, level: Int = Log.INFO) {

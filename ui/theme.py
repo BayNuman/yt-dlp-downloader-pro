@@ -16,6 +16,11 @@ THEME_CARD_SUBTITLE = ("#64748b", "#38bdf8")
 TRANSLATIONS = {
     "en": {
         "title": "yt-dlp Downloader Pro",
+        "lbl_task_pending": "Pending",
+        "lbl_task_downloading": "Downloading",
+        "lbl_task_completed": "Completed",
+        "lbl_task_failed": "Failed",
+        "lbl_task_cancelled": "Cancelled",
         "subtitle": "Smart multi-video and audio download manager with semi-translucent glassmorphic depth.",
         "theme_light": "☀️ Light Mode",
         "theme_dark": "🌙 Dark Mode",
@@ -139,6 +144,11 @@ TRANSLATIONS = {
     },
     "tr": {
         "title": "yt-dlp Downloader Pro",
+        "lbl_task_pending": "Bekliyor",
+        "lbl_task_downloading": "İndiriliyor",
+        "lbl_task_completed": "Tamamlandı",
+        "lbl_task_failed": "Hata",
+        "lbl_task_cancelled": "İptal Edildi",
         "subtitle": "Yarı saydam glassmorphic derinlik ile akıllı çoklu video ve ses indirme yöneticisi.",
         "theme_light": "☀️ Aydınlık Mod",
         "theme_dark": "🌙 Karanlık Mod",
@@ -262,6 +272,11 @@ TRANSLATIONS = {
     },
     "es": {
         "title": "yt-dlp Downloader Pro",
+        "lbl_task_pending": "Pendiente",
+        "lbl_task_downloading": "Descargando",
+        "lbl_task_completed": "Completado",
+        "lbl_task_failed": "Error",
+        "lbl_task_cancelled": "Cancelado",
         "subtitle": "Gestor inteligente de descargas de múltiples videos y audio con profundidad glassmorphic translúcida.",
         "theme_light": "☀️ Modo Claro",
         "theme_dark": "🌙 Modo Oscuro",

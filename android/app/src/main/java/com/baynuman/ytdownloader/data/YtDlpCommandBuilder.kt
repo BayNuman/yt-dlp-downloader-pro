@@ -93,7 +93,18 @@ class YtDlpCommandBuilder {
         }
 
         if (request.downloadArchive) {
-            cmd += listOf("--download-archive", "${request.outputDir}/.downloaded_archive.txt")
+            val archivePath = request.archiveFile.takeIf { it.isNotBlank() }
+                ?: "${request.outputDir}/.downloaded_archive.txt"
+            cmd += listOf("--download-archive", archivePath)
+        }
+
+        // Network I/O optimization: download only requested clip sections
+        if (request.clips.isNotEmpty()) {
+            val optimized = com.baynuman.ytdownloader.data.algorithms.ClipOptimizer.optimizeClipIntervals(request.clips)
+            for (macro in optimized) {
+                cmd += listOf("--download-sections", "*${macro.start}-${macro.end}")
+            }
+            cmd += "--force-keyframes-at-cuts"
         }
 
         request.retries?.let { cmd += listOf("--retries", it.toString()) }
@@ -181,7 +192,7 @@ class YtDlpCommandBuilder {
 
         args.forEach { ch ->
             when {
-                quote == null && ch == '"' -> quote = ch
+                quote == null && (ch == '"' || ch == '\'') -> quote = ch
                 quote != null && ch == quote -> quote = null
                 quote == null && ch.isWhitespace() -> flush()
                 else -> current.append(ch)

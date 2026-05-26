@@ -55,7 +55,7 @@ def decide_clip_strategy(info: dict, start: float, end: float) -> str:
     # Check for HTTP/HTTPS seekable protocol in formats list
     formats = info.get("formats", [])
     has_seekable = any(
-        f.get("protocol") in ("https", "http") or f.get("protocol") is None
+        f.get("protocol") in ("https", "http") or (f.get("url") and f.get("url").startswith(("http://", "https://")))
         for f in formats
     )
     

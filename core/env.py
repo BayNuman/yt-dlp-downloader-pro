@@ -36,7 +36,11 @@ def refresh_path_env() -> None:
         # 3. Add explicit check for Winget Local Packages directory where Deno/Node.js is usually extracted
         winget_packages_dir = os.path.expandvars(r"%USERPROFILE%\AppData\Local\Microsoft\WinGet\Packages")
         if os.path.exists(winget_packages_dir):
+            base_depth = winget_packages_dir.rstrip(os.path.sep).count(os.path.sep)
             for root, dirs, files in os.walk(winget_packages_dir):
+                current_depth = root.rstrip(os.path.sep).count(os.path.sep) - base_depth
+                if current_depth >= 3:
+                    del dirs[:]  # Stop descending further
                 if "deno.exe" in files or "node.exe" in files:
                     paths.append(root)
 

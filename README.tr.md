@@ -210,37 +210,46 @@ yt-dlp-downloader-pro/
 ├── 🖥️  Desktop (Python + CustomTkinter)
 │   ├── app.py                    # Bootstrap — sadece main()
 │   ├── core/
-│   │   ├── app_state.py          # Merkezi durum (AppState, DownloadTask, TaskStatus enum)
+│   │   ├── app_state.py          # Thread-safe durum motoru (RLock + otomatik dil algılama)
 │   │   ├── command_builder.py    # Pure function — yt-dlp argüman üreteci
 │   │   ├── downloader.py         # ThreadPoolExecutor kuyruk yöneticisi
 │   │   ├── clip.py               # Greedy interval merge + hibrit strateji motoru
 │   │   ├── merger.py             # FFmpeg Concat Demuxer
 │   │   ├── profiles.py           # Polymorphic export profilleri
 │   │   ├── suggester.py          # Heuristik format öneri motoru
-│   │   ├── history.py            # SQLite + thread-safe DatabaseWriter
-│   │   ├── presets.py            # JSON preset kaydet/yükle
+│   │   ├── history.py            # SQLite + thread-local bağlantı cache + WAL modu
+│   │   ├── presets.py            # JSON preset (bellek-içi cache katmanı)
 │   │   ├── updater.py            # PyPI versiyon kontrolü (arka planda)
 │   │   └── env.py                # Windows registry PATH yenileyici
 │   └── ui/
-│       ├── theme.py              # Glassmorphic tema + TR/EN/ES çeviriler
-│       ├── main_window.py        # Ana pencere + metadata fetch
-│       └── panels/               # Bağımsız panel bileşenleri
+│       ├── theme.py              # HSL renk paletleri + i18n çeviriler (en/tr/es)
+│       ├── main_window.py        # Ana pencere + birleştirilmiş UI kuyruk boşaltma
+│       ├── components/toast.py   # BaseToast OOP hiyerarşisi (ActionableToast, NotificationToast)
+│       └── panels/               # Akıllı widget diffing ile modüler paneller
 │
 └── 📱  Android (Kotlin + Jetpack Compose)
     └── android/app/src/main/
         ├── MainActivity.kt
-        ├── DownloadService.kt    # ForegroundService
+        ├── service/DownloadService.kt  # ForegroundService + yaşam döngüsü bağlama
+        ├── data/
+        │   ├── DownloadModels.kt       # Request/Event/Record modelleri + JSON serileştirme
+        │   ├── YtDlpCommandBuilder.kt  # CLI builder + klip kesit optimizasyonu
+        │   ├── YtDlpRunner.kt          # Regex tabanlı stdout parser + çoklu yol fallback
+        │   └── algorithms/ClipOptimizer.kt  # Greedy interval merging
         └── ui/
             ├── DownloaderScreen.kt
-            ├── DownloaderViewModel.kt
+            ├── DownloaderViewModel.kt   # 4-flow RuntimeState mimarisi
             └── theme/Translations.kt
 ```
 
 **Temel tasarım kararları:**
 - `core/` katmanı UI'dan tamamen bağımsız — Android'e taşınabilir
 - `command_builder.py` pure function — `self` gerektirmez, unit test edilebilir
-- `DatabaseWriter` singleton — tüm thread'ler non-blocking queue üzerinden yazar
-- `--load-info-json` optimizasyonu — metadata bir kere çekilir, indirmede tekrar ağa gidilmez
+- Thread-safe `AppState` ile `RLock` — indirme thread'leri ve UI arasında güvenli paylaşım
+- Thread-local SQLite bağlantı cache + WAL modu — gereksiz open/close yükü sıfırlanır
+- `QueuePanel` akıllı widget diffing — kart listesi kompozisyonu değişmediğinde rebuild yapılmaz, titreme önlenir
+- Android `RuntimeState` data class — 11 StateFlow tek bir type-safe 4-flow combine mimarisinde birleştirildi
+- Merkezi indirme arşivi `app-data-dir/download_archive.txt` — klasörler arası mükerrer indirme önlenir
 
 ---
 

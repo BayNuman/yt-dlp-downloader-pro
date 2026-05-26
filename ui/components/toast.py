@@ -11,46 +11,54 @@ from ui.theme import (
     THEME_ACCENT_RED
 )
 
-class ActionableToast(ctk.CTkToplevel):
-    def __init__(self, master, title: str, file_path: str, duration_ms: int = 7000, **kwargs):
+
+class BaseToast(ctk.CTkToplevel):
+    """Base class for all toast notifications.
+    Encapsulates shared window setup, positioning, fade-in/out animation,
+    and auto-dismiss lifecycle so subclasses only implement _build_body().
+    """
+    def __init__(self, master, border_color=THEME_ACCENT_BLUE, duration_ms: int = 5000, **kwargs):
         super().__init__(master, **kwargs)
-        
-        self.file_path = str(Path(file_path).resolve())
+
         self.duration_ms = duration_ms
-        
-        # 1. Hide default OS window borders & decorations
+
+        # Hide default OS window borders & decorations
         self.overrideredirect(True)
         # Keep on top of all windows
         self.attributes("-topmost", True)
-        
+
         # Frosted glass card border container
         self.frame = ctk.CTkFrame(
             self,
             fg_color=THEME_CARD_BG,
             border_width=2,
-            border_color=THEME_ACCENT_BLUE,
+            border_color=border_color,
             corner_radius=12
         )
         self.frame.pack(fill="both", expand=True)
 
-        # 2. UI Components Building
-        self._build_ui(title)
-        
-        # 3. Geo Positioning & Fade Animation
-        self.attributes("-alpha", 0.0) 
-        self.update_idletasks() # Force geometry calculations to avoid 1x1 sol-ust bug
+        # Build the specific body content (subclass hook)
+        self._build_body()
+
+        # Geo Positioning & Fade Animation
+        self.attributes("-alpha", 0.0)
+        self.update_idletasks()  # Force geometry calculations to avoid 1x1 top-left bug
         self._position_toast()
-        
+
         # Fade-in and bootstrap lifecycle
         self._fade_in()
         self.timer_id = self.after(self.duration_ms, self._fade_out)
 
-    def _build_ui(self, title: str):
-        # Header Row: Title & Close Button
+    def _build_body(self):
+        """Override in subclasses to build the toast's content inside self.frame."""
+        raise NotImplementedError
+
+    def _build_header(self, title: str):
+        """Shared header row with title and close button."""
         header_frame = ctk.CTkFrame(self.frame, fg_color="transparent")
         header_frame.pack(fill="x", padx=12, pady=(12, 4))
         header_frame.grid_columnconfigure(0, weight=1)
-        
+
         lbl_title = ctk.CTkLabel(
             header_frame,
             text=title,
@@ -58,7 +66,7 @@ class ActionableToast(ctk.CTkToplevel):
             text_color=THEME_TEXT_PRIMARY
         )
         lbl_title.grid(row=0, column=0, sticky="w")
-        
+
         btn_close = ctk.CTkButton(
             header_frame,
             text="✕",
@@ -71,6 +79,56 @@ class ActionableToast(ctk.CTkToplevel):
             command=self._fade_out
         )
         btn_close.grid(row=0, column=1, sticky="e")
+
+    def _position_toast(self):
+        req_width = self.winfo_reqwidth()
+        req_height = self.winfo_reqheight()
+
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+
+        # Margins to protect Taskbar overlaps
+        margin_x = 24
+        margin_y = 72
+
+        x = screen_width - req_width - margin_x
+        y = screen_height - req_height - margin_y
+
+        self.geometry(f"{req_width}x{req_height}+{x}+{y}")
+
+    def _fade_in(self):
+        alpha = self.attributes("-alpha")
+        if alpha < 1.0:
+            alpha += 0.1
+            self.attributes("-alpha", min(alpha, 1.0))
+            self.after(20, self._fade_in)
+
+    def _fade_out(self):
+        if hasattr(self, 'timer_id') and self.timer_id:
+            try:
+                self.after_cancel(self.timer_id)
+            except Exception:
+                pass
+            self.timer_id = None
+
+        alpha = self.attributes("-alpha")
+        if alpha > 0.0:
+            alpha -= 0.1
+            self.attributes("-alpha", max(alpha, 0.0))
+            self.after(20, self._fade_out)
+        else:
+            self.destroy()
+
+
+class ActionableToast(BaseToast):
+    def __init__(self, master, title: str, file_path: str, duration_ms: int = 7000, **kwargs):
+        self.file_path = str(Path(file_path).resolve())
+        self._title = title
+        super().__init__(master, border_color=THEME_ACCENT_BLUE, duration_ms=duration_ms, **kwargs)
+
+    def _build_body(self):
+        # Header Row: Title & Close Button
+        self._build_header(self._title)
 
         # Filename Row
         file_name = os.path.basename(self.file_path)
@@ -132,22 +190,6 @@ class ActionableToast(ctk.CTkToplevel):
         )
         btn_copy.grid(row=0, column=2, padx=2)
 
-    def _position_toast(self):
-        req_width = self.winfo_reqwidth()
-        req_height = self.winfo_reqheight()
-        
-        screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
-        
-        # Margins to protect Taskbar overlaps
-        margin_x = 24
-        margin_y = 72 
-        
-        x = screen_width - req_width - margin_x
-        y = screen_height - req_height - margin_y
-        
-        self.geometry(f"{req_width}x{req_height}+{x}+{y}")
-
     def _action_play(self):
         try:
             if sys.platform == "win32":
@@ -180,75 +222,19 @@ class ActionableToast(ctk.CTkToplevel):
         self.update()
         self._fade_out()
 
-    def _fade_in(self):
-        alpha = self.attributes("-alpha")
-        if alpha < 1.0:
-            alpha += 0.1
-            self.attributes("-alpha", min(alpha, 1.0))
-            self.after(20, self._fade_in)
 
-    def _fade_out(self):
-        if hasattr(self, 'timer_id') and self.timer_id:
-            try:
-                self.after_cancel(self.timer_id)
-            except Exception:
-                pass
-            self.timer_id = None
-            
-        alpha = self.attributes("-alpha")
-        if alpha > 0.0:
-            alpha -= 0.1
-            self.attributes("-alpha", max(alpha, 0.0))
-            self.after(20, self._fade_out)
-        else:
-            self.destroy()
-
-class NotificationToast(ctk.CTkToplevel):
+class NotificationToast(BaseToast):
     def __init__(self, master, title: str, desc: str, duration_ms: int = 5000, color=THEME_ACCENT_BLUE, **kwargs):
-        super().__init__(master, **kwargs)
-        
-        self.duration_ms = duration_ms
-        
-        self.overrideredirect(True)
-        self.attributes("-topmost", True)
-        
-        self.frame = ctk.CTkFrame(
-            self,
-            fg_color=THEME_CARD_BG,
-            border_width=2,
-            border_color=color,
-            corner_radius=12
-        )
-        self.frame.pack(fill="both", expand=True)
+        self._title = title
+        self._desc = desc
+        super().__init__(master, border_color=color, duration_ms=duration_ms, **kwargs)
 
-        header_frame = ctk.CTkFrame(self.frame, fg_color="transparent")
-        header_frame.pack(fill="x", padx=12, pady=(12, 4))
-        header_frame.grid_columnconfigure(0, weight=1)
-        
-        lbl_title = ctk.CTkLabel(
-            header_frame,
-            text=title,
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            text_color=THEME_TEXT_PRIMARY
-        )
-        lbl_title.grid(row=0, column=0, sticky="w")
-        
-        btn_close = ctk.CTkButton(
-            header_frame,
-            text="✕",
-            width=20,
-            height=20,
-            fg_color="transparent",
-            text_color=THEME_TEXT_SECONDARY,
-            hover_color=THEME_ACCENT_RED,
-            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
-            command=self._fade_out
-        )
-        btn_close.grid(row=0, column=1, sticky="e")
+    def _build_body(self):
+        self._build_header(self._title)
 
         lbl_desc = ctk.CTkLabel(
             self.frame,
-            text=desc,
+            text=self._desc,
             font=ctk.CTkFont(family="Segoe UI", size=11),
             text_color=THEME_TEXT_SECONDARY,
             anchor="w",
@@ -256,44 +242,3 @@ class NotificationToast(ctk.CTkToplevel):
             wraplength=260
         )
         lbl_desc.pack(fill="x", padx=12, pady=(0, 14))
-        
-        self.attributes("-alpha", 0.0) 
-        self.update_idletasks()
-        self._position_toast()
-        
-        self._fade_in()
-        self.timer_id = self.after(self.duration_ms, self._fade_out)
-
-    def _position_toast(self):
-        req_width = self.winfo_reqwidth()
-        req_height = self.winfo_reqheight()
-        screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
-        margin_x = 24
-        margin_y = 72 
-        x = screen_width - req_width - margin_x
-        y = screen_height - req_height - margin_y
-        self.geometry(f"{req_width}x{req_height}+{x}+{y}")
-
-    def _fade_in(self):
-        alpha = self.attributes("-alpha")
-        if alpha < 1.0:
-            alpha += 0.1
-            self.attributes("-alpha", min(alpha, 1.0))
-            self.after(20, self._fade_in)
-
-    def _fade_out(self):
-        if hasattr(self, 'timer_id') and self.timer_id:
-            try:
-                self.after_cancel(self.timer_id)
-            except Exception:
-                pass
-            self.timer_id = None
-            
-        alpha = self.attributes("-alpha")
-        if alpha > 0.0:
-            alpha -= 0.1
-            self.attributes("-alpha", max(alpha, 0.0))
-            self.after(20, self._fade_out)
-        else:
-            self.destroy()

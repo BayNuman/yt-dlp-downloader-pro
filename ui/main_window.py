@@ -8,6 +8,7 @@ import threading
 import urllib.request
 import hashlib
 import platform
+import uuid
 import subprocess
 from pathlib import Path
 from tkinter import messagebox
@@ -98,13 +99,23 @@ class MainWindow(ctk.CTk):
         self.after(2000, self._check_and_prompt_deno)
 
     def _check_and_prompt_deno(self) -> None:
+        if platform.system() != "Windows":
+            return
+
+        def bg_check():
+            import shutil
+            from core.env import refresh_path_env
+            refresh_path_env()
+            if shutil.which('deno') or shutil.which('node'):
+                return
+            
+            self.after(0, self._show_deno_prompt)
+
+        threading.Thread(target=bg_check, daemon=True).start()
+
+    def _show_deno_prompt(self) -> None:
         import shutil
         from core.env import refresh_path_env
-        
-        refresh_path_env()
-        if shutil.which('deno') or shutil.which('node'):
-            return  # Already installed!
-            
         lang = self.app_state.current_lang
         title = "Sistem Gereksinimi" if lang == "tr" else ("Requisito del Sistema" if lang == "es" else "System Requirement")
         msg = (
@@ -316,6 +327,11 @@ class MainWindow(ctk.CTk):
                 'quiet': True,
                 'no_warnings': True,
             }
+
+            # Optimization #43: For playlist URLs, use flat extraction to avoid
+            # fetching each video's full format list — speeds up preview by 10-100x
+            if 'list=' in url:
+                ydl_opts['extract_flat'] = 'in_playlist'
             
             if cookies_file:
                 ydl_opts['cookiefile'] = cookies_file
@@ -443,7 +459,7 @@ class MainWindow(ctk.CTk):
             from core.app_state import DownloadTask
             for raw_url in self.app_state.batch_urls:
                 if raw_url.startswith(("http://", "https://")):
-                    item_id = hashlib.md5(raw_url.encode()).hexdigest()
+                    item_id = uuid.uuid4().hex
                     task_params = {
                         "id": item_id,
                         "url": raw_url,
@@ -486,7 +502,7 @@ class MainWindow(ctk.CTk):
                 
                 added_count = 0
                 for idx_macro, macro in enumerate(macro_list):
-                    item_id = hashlib.md5(f"{url}_{idx_macro}_{macro.start}_{macro.end}".encode()).hexdigest()
+                    item_id = uuid.uuid4().hex
                     macro_start_str = format_seconds_to_mmss(macro.start)
                     macro_end_str = format_seconds_to_mmss(macro.end)
                     
@@ -539,7 +555,7 @@ class MainWindow(ctk.CTk):
                 self.progress_panel.update_status("●", THEME_ACCENT_BLUE, TRANSLATIONS[self.app_state.current_lang]["lbl_status_added"].format(count=added_count))
             else:
                 # Normal single item or clipping off
-                item_id = hashlib.md5(url.encode()).hexdigest()
+                item_id = uuid.uuid4().hex
                 task_params = {
                     "id": item_id,
                     "url": url,
@@ -639,6 +655,8 @@ class MainWindow(ctk.CTk):
     def _drain_ui_queue(self) -> None:
         processed = 0
         log_batch = []
+        needs_progress_update = False
+        needs_active_file_update = False
         while processed < 100:
             try:
                 kind, payload = self.ui_queue.get_nowait()
@@ -671,8 +689,7 @@ class MainWindow(ctk.CTk):
                     size=stats["size"]
                 )
 
-                # Dynamically calculate and update unified global progress bar
-                self.progress_panel.update_global_progress(self.app_state.queue_list)
+                needs_progress_update = True
 
             elif kind == "active_file":
                 task_id, filename = payload
@@ -680,12 +697,7 @@ class MainWindow(ctk.CTk):
                     if t.id == task_id:
                         t.active_filename = filename
                         break
-                
-                # Render active downloading files list
-                active_tasks = [t for t in self.app_state.queue_list if t.status_code == TaskStatus.DOWNLOADING]
-                if active_tasks:
-                    titles = ", ".join(t.title[:15] + "..." for t in active_tasks)
-                    self.progress_panel.active_file_var.set(f"Aktif İndirmeler: {titles}")
+                needs_active_file_update = True
             elif kind == "percent_complete":
                 pass # Handled by update_global_progress
             elif kind == "status":
@@ -731,6 +743,16 @@ class MainWindow(ctk.CTk):
                 else:
                     self.progress_panel.update_status("●", THEME_ACCENT_GREEN, TRANSLATIONS[self.app_state.current_lang]["lbl_status_completed"])
                     self._show_toast(TRANSLATIONS[self.app_state.current_lang]["lbl_toast_all_title"], TRANSLATIONS[self.app_state.current_lang]["lbl_toast_all_desc"])
+
+        # Coalesced UI updates — called at most once per drain cycle
+        if needs_progress_update:
+            self.progress_panel.update_global_progress(self.app_state.queue_list)
+
+        if needs_active_file_update:
+            active_tasks = [t for t in self.app_state.queue_list if t.status_code == TaskStatus.DOWNLOADING]
+            if active_tasks:
+                titles = ", ".join(t.title[:15] + "..." for t in active_tasks)
+                self.progress_panel.active_file_var.set(f"Aktif İndirmeler: {titles}")
 
         if log_batch:
             self.progress_panel.append_log_batch(log_batch)

@@ -210,37 +210,46 @@ yt-dlp-downloader-pro/
 ├── 🖥️  Desktop (Python + CustomTkinter)
 │   ├── app.py                    # Punto de entrada de la aplicación - llama a main()
 │   ├── core/
-│   │   ├── app_state.py          # Estado global (AppState, DownloadTask, TaskStatus enum)
+│   │   ├── app_state.py          # Motor de estado thread-safe con RLock + detección automática de idioma
 │   │   ├── command_builder.py    # Funciones puras - genera los argumentos de yt-dlp
 │   │   ├── downloader.py         # Ejecutor concurrente mediante ThreadPoolExecutor
 │   │   ├── clip.py               # Algoritmo de LeetCode 56 Greedy Interval Merging
 │   │   ├── merger.py             # FFmpeg Concat Demuxer para uniones sin pérdida
 │   │   ├── profiles.py           # Perfiles polimórficos de salida ffmpeg
 │   │   ├── suggester.py          # Motor de sugerencias heurísticas
-│   │   ├── history.py            # Base de datos SQLite + cola asíncrona DatabaseWriter
-│   │   ├── presets.py            # Guardado/Carga de presets en JSON
+│   │   ├── history.py            # SQLite + caché de conexión thread-local + modo WAL
+│   │   ├── presets.py            # Presets JSON con capa de caché en memoria
 │   │   ├── updater.py            # Comprobación de actualizaciones en PyPI
 │   │   └── env.py                # Actualización en vivo del PATH en Windows
 │   └── ui/
-│       ├── theme.py              # Paletas de color HSL + diccionario de traducciones
-│       ├── main_window.py        # Orquestador del diseño GUI y flujo de hilos
-│       └── panels/               # Vistas modulares de la interfaz (Cola, Config, Vista previa)
+│       ├── theme.py              # Paletas de color HSL + traducciones i18n (en/tr/es)
+│       ├── main_window.py        # Orquestador GUI con vaciado de cola UI coalescente
+│       ├── components/toast.py   # Jerarquía OOP BaseToast (ActionableToast, NotificationToast)
+│       └── panels/               # Paneles modulares con diffing inteligente de widgets
 │
 └── 📱  Android (Kotlin + Jetpack Compose)
     └── android/app/src/main/
         ├── MainActivity.kt
-        ├── DownloadService.kt    # Foreground service para Android
+        ├── service/DownloadService.kt  # ForegroundService con enlace de ciclo de vida
+        ├── data/
+        │   ├── DownloadModels.kt       # Modelos Request/Event/Record + serialización JSON
+        │   ├── YtDlpCommandBuilder.kt  # Constructor CLI con optimización de secciones de clips
+        │   ├── YtDlpRunner.kt          # Parser stdout basado en regex + fallback multi-ruta
+        │   └── algorithms/ClipOptimizer.kt  # Fusión de intervalos greedy
         └── ui/
             ├── DownloaderScreen.kt
-            ├── DownloaderViewModel.kt
+            ├── DownloaderViewModel.kt   # Arquitectura RuntimeState de 4 flujos
             └── theme/Translations.kt
 ```
 
 **Decisiones de Diseño Clave:**
 - Capa `core/` totalmente desacoplada de la interfaz gráfica — código limpio y portable.
 - `command_builder.py` implementa únicamente funciones puras sin referencias a `self`, ideales para testing.
-- El singleton `DatabaseWriter` gestiona las escrituras de base de datos de manera secuencial a través de una cola asíncrona segura contra condiciones de carrera.
-- Lógica `--load-info-json` inteligente que descarga metadatos una sola vez, previniendo dobles consultas al servidor.
+- `AppState` thread-safe con `RLock` — compartido de forma segura entre hilos de descarga y UI.
+- Caché de conexión SQLite thread-local con modo WAL — elimina la sobrecarga de apertura/cierre redundante.
+- Diffing inteligente de widgets en `QueuePanel` — solo reconstruye tarjetas cuando cambia la composición de la lista de tareas, eliminando el parpadeo.
+- `RuntimeState` data class en Android — consolida 11 StateFlows en una arquitectura type-safe de 4 flujos combine.
+- Archivo central de descargas en `app-data-dir/download_archive.txt` — previene re-descargas entre carpetas en ambas plataformas.
 
 ---
 

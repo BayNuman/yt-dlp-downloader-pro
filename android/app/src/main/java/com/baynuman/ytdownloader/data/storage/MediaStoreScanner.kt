@@ -3,6 +3,7 @@ package com.baynuman.ytdownloader.data.storage
 import android.content.Context
 import android.media.MediaScannerConnection
 import android.net.Uri
+import android.util.Log
 
 object MediaStoreScanner {
     /**
@@ -19,7 +20,7 @@ object MediaStoreScanner {
                 onScanComplete(uri)
             }
         } catch (e: Exception) {
-            print("Failed to scan file via MediaScanner: ${e.message}")
+            Log.e("MediaStoreScanner", "Failed to scan file via MediaScanner", e)
             onScanComplete(null)
         }
     }

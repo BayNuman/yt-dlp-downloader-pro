@@ -19,7 +19,6 @@ class UrlPreviewResolver(
 ) {
     fun resolve(url: String): UrlPreview {
         val youtubeDL = YoutubeDL.getInstance()
-        youtubeDL.init(appContext)
 
         val request = YoutubeDLRequest(url).addCommands(
             listOf(
@@ -33,7 +32,7 @@ class UrlPreviewResolver(
         if (response.exitCode != 0) {
             val error = (response.err + "\n" + response.out).trim()
             throw YoutubeDLException(
-                if (error.isEmpty()) "Baglanti bilgisi alinamadi." else error,
+                if (error.isEmpty()) "Baglanti bilgiisi alinamadi." else error,
             )
         }
 
@@ -67,15 +66,28 @@ class UrlPreviewResolver(
     }
 
     private fun extractJson(output: String): JSONObject {
-        val trimmed = output.trim()
-        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-            return JSONObject(trimmed)
-        }
+        try {
+            // Find the line that begins the JSON output to bypass warning prefixes
+            val lines = output.lineSequence().map { it.trim() }
+            val firstJsonLine = lines.firstOrNull { it.startsWith("{") }
+            if (firstJsonLine != null) {
+                val start = output.indexOf(firstJsonLine)
+                val end = output.lastIndexOf('}')
+                if (start >= 0 && end > start) {
+                    return JSONObject(output.substring(start, end + 1))
+                }
+            }
+        } catch (_: Exception) {}
 
-        val start = trimmed.indexOf('{')
-        val end = trimmed.lastIndexOf('}')
+        // Fallback robust brace-matching
+        val start = output.indexOf('{')
+        val end = output.lastIndexOf('}')
         if (start >= 0 && end > start) {
-            return JSONObject(trimmed.substring(start, end + 1))
+            try {
+                return JSONObject(output.substring(start, end + 1))
+            } catch (e: Exception) {
+                throw YoutubeDLException("Baglanti verisi okunamadi: ${e.message}")
+            }
         }
 
         throw YoutubeDLException("Baglanti verisi okunamadi.")

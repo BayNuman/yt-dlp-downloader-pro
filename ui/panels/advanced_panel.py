@@ -173,7 +173,7 @@ class AdvancedPanel(ctk.CTkFrame):
         self.video_audio_codec_var = ctk.StringVar(value="AAC")
         self.video_audio_codec_menu = ctk.CTkOptionMenu(
             c2,
-            values=["AAC", "OPUS (OPEC)"],
+            values=["AAC", "OPUS (Open)"],
             variable=self.video_audio_codec_var,
             fg_color=THEME_BG,
             button_color=THEME_BG,
@@ -212,6 +212,13 @@ class AdvancedPanel(ctk.CTkFrame):
         self.rate_limit_var = ctk.StringVar(value="")
         self.rate_limit_entry = ctk.CTkEntry(l1, textvariable=self.rate_limit_var, placeholder_text="Ex: 2M or 500K", height=30, fg_color=THEME_BG, border_color=THEME_CARD_BORDER, border_width=1, text_color=THEME_TEXT_PRIMARY)
         self.rate_limit_entry.grid(row=2, column=1, sticky="ew", padx=6, pady=6)
+
+        self.lbl_concurrent_frag = ctk.CTkLabel(l1, text="Eşzamanlı Parça" if lang == "tr" else ("Fragmentos Conc." if lang == "es" else "Concurrent Frags"), text_color=THEME_TEXT_PRIMARY)
+        self.lbl_concurrent_frag.grid(row=3, column=0, sticky="w", padx=6, pady=6)
+        
+        self.concurrent_fragments_var = ctk.StringVar(value="3")
+        self.concurrent_fragments_entry = ctk.CTkEntry(l1, textvariable=self.concurrent_fragments_var, placeholder_text="Ex: 3", height=30, fg_color=THEME_BG, border_color=THEME_CARD_BORDER, border_width=1, text_color=THEME_TEXT_PRIMARY)
+        self.concurrent_fragments_entry.grid(row=3, column=1, sticky="ew", padx=6, pady=6)
 
         l2 = ctk.CTkFrame(self.tab_limits, fg_color="transparent")
         l2.grid(row=0, column=1, padx=10, pady=8, sticky="nsew")
@@ -485,7 +492,7 @@ class AdvancedPanel(ctk.CTkFrame):
         self.metadata_var.set(p.get("metadata_flag", True))
         self.restrict_names_var.set(p.get("restrict_filenames", False))
         
-        concurrent = p.get("concurrent_fragments", "3")
+        self.concurrent_fragments_var.set(p.get("concurrent_fragments", "3"))
         self.playlist_items_var.set(p.get("playlist_items", ""))
         self.max_downloads_var.set(p.get("max_downloads", ""))
         self.rate_limit_var.set(p.get("rate_limit", ""))
@@ -513,7 +520,8 @@ class AdvancedPanel(ctk.CTkFrame):
                 "restrict_filenames": self.restrict_names_var.get(),
                 "playlist_items": self.playlist_items_var.get(),
                 "max_downloads": self.max_downloads_var.get(),
-                "rate_limit": self.rate_limit_var.get()
+                "rate_limit": self.rate_limit_var.get(),
+                "concurrent_fragments": self.concurrent_fragments_var.get()
             }
             save_preset(name, preset_dict)
             self._load_presets_dropdown()
@@ -550,7 +558,7 @@ class AdvancedPanel(ctk.CTkFrame):
             "rate_limit": self.rate_limit_var.get(),
             "archive": self.download_archive_var.get(),
             "retries": self.retries_var.get(),
-            "concurrent_fragments": "3",
+            "concurrent_fragments": self.concurrent_fragments_var.get(),
             "cookies": self.cookies_var.get(),
             "browser_cookies": self.browser_cookies_var.get(),
             "youtube_403": self.youtube_403_fallback_var.get(),
@@ -577,6 +585,7 @@ class AdvancedPanel(ctk.CTkFrame):
         self.playlist_items_var.set(d.get("playlist_items", ""))
         self.max_downloads_var.set(d.get("max_downloads", ""))
         self.rate_limit_var.set(d.get("rate_limit", ""))
+        self.concurrent_fragments_var.set(d.get("concurrent_fragments", "3"))
         self.download_archive_var.set(d.get("archive", True))
         self.retries_var.set(d.get("retries", ""))
         self.cookies_var.set(d.get("cookies", ""))

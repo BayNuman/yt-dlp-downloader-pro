@@ -12,11 +12,11 @@ interface DownloadRecordDao {
     fun getAllRecordsFlow(): Flow<List<DownloadRecordEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertRecord(record: DownloadRecordEntity)
+    fun insertRecord(record: DownloadRecordEntity)
 
     @Query("DELETE FROM download_history WHERE id = :id")
-    suspend fun deleteRecordById(id: String)
+    fun deleteRecordById(id: String)
 
     @Query("DELETE FROM download_history")
-    suspend fun clearAll()
+    fun clearAll()
 }

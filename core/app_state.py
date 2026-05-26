@@ -75,11 +75,27 @@ class DownloadTask:
     _output_file: Optional[str] = None
     _temp_info_json: Optional[str] = None
 
+def get_default_lang() -> str:
+    import locale
+    try:
+        for get_func in (locale.getlocale, locale.getdefaultlocale):
+            try:
+                sys_lang = get_func()[0]
+                if sys_lang:
+                    lang_code = sys_lang.split("_")[0].lower()
+                    if lang_code in ("tr", "es", "en"):
+                        return lang_code
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return "en"
+
 @dataclass
 class AppPreferences:
     # Target download directories & settings
     output_dir: str = ""
-    current_lang: str = "tr"  # Default language (tr, en, es)
+    current_lang: str = field(default_factory=get_default_lang)  # Auto-detected default language
     current_theme: str = "Dark"  # Default theme (Dark, Light)
     active_profile: str = "best"  # best, 1080p, 720p, mp3, custom
     custom_settings: Dict = field(default_factory=dict)
@@ -130,129 +146,23 @@ class AppState:
     # Outdated warning state
     saw_outdated_warning: bool = False
 
-    # Backward-compatible Property Proxies for UI and Command Builder compatibility
-    @property
-    def output_dir(self) -> str:
-        return self.preferences.output_dir
-    @output_dir.setter
-    def output_dir(self, val: str):
-        self.preferences.output_dir = val
+    def __post_init__(self):
+        self._lock = threading.RLock()
 
-    @property
-    def current_lang(self) -> str:
-        return self.preferences.current_lang
-    @current_lang.setter
-    def current_lang(self, val: str):
-        self.preferences.current_lang = val
+    # Dynamic Delegation Pattern for Property Proxies
+    def __getattr__(self, name):
+        if name.startswith("__") and name.endswith("__"):
+            raise AttributeError
+        if hasattr(self, "preferences"):
+            pref = object.__getattribute__(self, "preferences")
+            if hasattr(pref, name):
+                return getattr(pref, name)
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
-    @property
-    def current_theme(self) -> str:
-        return self.preferences.current_theme
-    @current_theme.setter
-    def current_theme(self, val: str):
-        self.preferences.current_theme = val
-
-    @property
-    def active_profile(self) -> str:
-        return self.preferences.active_profile
-    @active_profile.setter
-    def active_profile(self, val: str):
-        self.preferences.active_profile = val
-
-    @property
-    def custom_settings(self) -> Dict:
-        return self.preferences.custom_settings
-    @custom_settings.setter
-    def custom_settings(self, val: Dict):
-        self.preferences.custom_settings = val
-
-    @property
-    def sponsorblock_enabled(self) -> bool:
-        return self.preferences.sponsorblock_enabled
-    @sponsorblock_enabled.setter
-    def sponsorblock_enabled(self, val: bool):
-        self.preferences.sponsorblock_enabled = val
-
-    @property
-    def browser_cookies(self) -> str:
-        return self.preferences.browser_cookies
-    @browser_cookies.setter
-    def browser_cookies(self, val: str):
-        self.preferences.browser_cookies = val
-
-    @property
-    def speed_limit(self) -> Optional[str]:
-        return self.preferences.speed_limit
-    @speed_limit.setter
-    def speed_limit(self, val: Optional[str]):
-        self.preferences.speed_limit = val
-
-    @property
-    def metadata_flag(self) -> bool:
-        return self.preferences.metadata_flag
-    @metadata_flag.setter
-    def metadata_flag(self, val: bool):
-        self.preferences.metadata_flag = val
-
-    @property
-    def thumbnail_flag(self) -> bool:
-        return self.preferences.thumbnail_flag
-    @thumbnail_flag.setter
-    def thumbnail_flag(self, val: bool):
-        self.preferences.thumbnail_flag = val
-
-    @property
-    def subtitle_flag(self) -> bool:
-        return self.preferences.subtitle_flag
-    @subtitle_flag.setter
-    def subtitle_flag(self, val: bool):
-        self.preferences.subtitle_flag = val
-
-    @property
-    def auto_subtitle_flag(self) -> bool:
-        return self.preferences.auto_subtitle_flag
-    @auto_subtitle_flag.setter
-    def auto_subtitle_flag(self, val: bool):
-        self.preferences.auto_subtitle_flag = val
-
-    @property
-    def restrict_filenames(self) -> bool:
-        return self.preferences.restrict_filenames
-    @restrict_filenames.setter
-    def restrict_filenames(self, val: bool):
-        self.preferences.restrict_filenames = val
-
-    @property
-    def keep_video_flag(self) -> bool:
-        return self.preferences.keep_video_flag
-    @keep_video_flag.setter
-    def keep_video_flag(self, val: bool):
-        self.preferences.keep_video_flag = val
-
-    @property
-    def embed_chapters(self) -> bool:
-        return self.preferences.embed_chapters
-    @embed_chapters.setter
-    def embed_chapters(self, val: bool):
-        self.preferences.embed_chapters = val
-
-    @property
-    def concurrent_fragments(self) -> str:
-        return self.preferences.concurrent_fragments
-    @concurrent_fragments.setter
-    def concurrent_fragments(self, val: str):
-        self.preferences.concurrent_fragments = val
-
-    @property
-    def output_template(self) -> str:
-        return self.preferences.output_template
-    @output_template.setter
-    def output_template(self, val: str):
-        self.preferences.output_template = val
-
-    @property
-    def extra_args(self) -> str:
-        return self.preferences.extra_args
-    @extra_args.setter
-    def extra_args(self, val: str):
-        self.preferences.extra_args = val
+    def __setattr__(self, name, value):
+        if name != "preferences" and hasattr(self, "preferences"):
+            pref = object.__getattribute__(self, "preferences")
+            if hasattr(pref, name):
+                setattr(pref, name, value)
+                return
+        object.__setattr__(self, name, value)
