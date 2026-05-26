@@ -16,6 +16,7 @@ from core.env import refresh_path_env
 
 def resolve_ffmpeg_path() -> str:
     """Finds the ffmpeg binary, checking bundled paths or standard locations."""
+    # 1. Check PyInstaller temp directory (if bundled inside the EXE)
     try:
         base_path = sys._MEIPASS
         bundled = os.path.join(base_path, "ffmpeg.exe" if os.name == "nt" else "ffmpeg")
@@ -24,10 +25,21 @@ def resolve_ffmpeg_path() -> str:
     except Exception:
         pass
 
+    # 2. Check directly next to the running executable (for installed Windows setups)
+    try:
+        app_dir = os.path.dirname(sys.executable)
+        adjacent = os.path.join(app_dir, "ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        if os.path.exists(adjacent):
+            return adjacent
+    except Exception:
+        pass
+
+    # 3. Check local bin directory (for development)
     local_bin = Path(".") / "bin" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
     if local_bin.exists():
         return str(local_bin.resolve())
 
+    # 4. Fallback to system PATH
     return "ffmpeg"
 
 def append_options_before_urls(cmd: list[str], urls: list[str], options: list[str]) -> list[str]:

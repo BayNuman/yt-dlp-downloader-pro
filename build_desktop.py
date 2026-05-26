@@ -30,11 +30,17 @@ def main():
         
     # 4. Import customtkinter in the target environment to find its package location
     try:
-        import customtkinter
-        ctk_dir = os.path.dirname(customtkinter.__file__)
+        # Run a small script in the target python environment to get customtkinter's path
+        result = subprocess.run(
+            [venv_python, "-c", "import os, customtkinter; print(os.path.dirname(customtkinter.__file__))"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        ctk_dir = result.stdout.strip()
         print(f"[*] CustomTkinter kütüphane yolu: {ctk_dir}")
-    except ImportError:
-        print("[!] CustomTkinter yüklenemedi. Paketleme durduruluyor.")
+    except Exception as e:
+        print(f"[!] CustomTkinter yüklenemedi veya yolu bulunamadı: {e}")
         sys.exit(1)
     
     # 5. Formulate PyInstaller command
