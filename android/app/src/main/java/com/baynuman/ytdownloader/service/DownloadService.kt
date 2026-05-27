@@ -23,11 +23,12 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 
 class DownloadService : Service() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val waveformExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -41,7 +42,6 @@ class DownloadService : Service() {
     override fun onDestroy() {
         unregisterWifiOnlyKillSwitch()
         serviceScope.cancel()
-        waveformExecutor.shutdown()
         super.onDestroy()
     }
 
@@ -91,6 +91,7 @@ class DownloadService : Service() {
     }
 
     private fun registerWifiOnlyKillSwitch() {
+        unregisterWifiOnlyKillSwitch() // Clean up any active callback first to prevent leak!
         val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
         val request = android.net.NetworkRequest.Builder()
             .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
@@ -386,10 +387,10 @@ class DownloadService : Service() {
 
     private fun enqueueWaveformGeneration(request: DownloadRequest, filePath: String) {
         val context = applicationContext
-        waveformExecutor.submit {
+        serviceScope.launch(Dispatchers.Default) {
             try {
                 val audioFile = java.io.File(filePath)
-                if (!audioFile.exists() || !audioFile.isFile) return@submit
+                if (!audioFile.exists() || !audioFile.isFile) return@launch
 
                 val waveformsDir = java.io.File(context.filesDir, "waveforms")
                 if (!waveformsDir.exists()) {
@@ -403,7 +404,7 @@ class DownloadService : Service() {
                 val ffmpegBin = runner.getFFmpegFile()
                 if (!ffmpegBin.exists()) {
                     Log.w("DownloadService", "FFmpeg binary not found for waveform generation.")
-                    return@submit
+                    return@launch
                 }
 
                 // Command: ffmpeg -i input.mp3 -filter_complex "aresample=1000,showwavespic=s=320x60:colors=#6366f1" -frames:v 1 output.png
@@ -421,26 +422,33 @@ class DownloadService : Service() {
                     .redirectErrorStream(true)
                     .start()
 
-                // Read output to avoid process block
-                process.inputStream.bufferedReader().use { reader ->
-                    while (reader.readLine() != null) { /* no-op */ }
+                // Read output to avoid process block (running on Dispatchers.IO for blocking I/O)
+                withContext(Dispatchers.IO) {
+                    process.inputStream.bufferedReader().use { reader ->
+                        while (reader.readLine() != null) { /* no-op */ }
+                    }
                 }
 
-                val exitCode = process.waitFor()
+                val exitCode = withContext(Dispatchers.IO) {
+                    process.waitFor()
+                }
+
                 if (exitCode == 0 && outputPng.exists()) {
                     Log.i("DownloadService", "Waveform successfully generated at: ${outputPng.absolutePath}")
-                    // Update SQLite database record using taskId directly with a retry block (B1 / B4)
+                    // Update SQLite database record using taskId directly with a non-blocking delay block (suspend)
                     val db = com.baynuman.ytdownloader.data.db.DownloadDatabase.getDatabase(context)
                     val dao = db.downloadRecordDao()
                     
                     var rowsUpdated = 0
-                    for (i in 1..20) {
-                        rowsUpdated = dao.updateThumbnailPath(request.taskId, outputPng.absolutePath)
-                        if (rowsUpdated > 0) {
-                            Log.i("DownloadService", "Waveform path updated in DB for taskId: ${request.taskId}")
-                            break
+                    withContext(Dispatchers.IO) {
+                        for (i in 1..20) {
+                            rowsUpdated = dao.updateThumbnailPath(request.taskId, outputPng.absolutePath)
+                            if (rowsUpdated > 0) {
+                                Log.i("DownloadService", "Waveform path updated in DB for taskId: ${request.taskId}")
+                                break
+                            }
+                            delay(500) // Suspend instead of Thread.sleep! Non-blocking.
                         }
-                        Thread.sleep(500) // Wait for database insertion from ViewModel
                     }
                     if (rowsUpdated == 0) {
                         Log.w("DownloadService", "Failed to update waveform path in DB: record not found for taskId: ${request.taskId}")

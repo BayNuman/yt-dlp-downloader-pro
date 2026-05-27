@@ -8,8 +8,20 @@ object DownloadRepository {
     val isRunning = MutableStateFlow(false)
     
     @Volatile
-    var activeRunner: YtDlpRunner? = null
+    private var _activeRunner: YtDlpRunner? = null
     
     @Volatile
-    var activeRequest: DownloadRequest? = null
+    private var _activeRequest: DownloadRequest? = null
+    
+    var activeRunner: YtDlpRunner?
+        @Synchronized get() = _activeRunner
+        @Synchronized set(value) {
+            _activeRunner = value
+        }
+        
+    var activeRequest: DownloadRequest?
+        @Synchronized get() = _activeRequest
+        @Synchronized set(value) {
+            _activeRequest = value
+        }
 }

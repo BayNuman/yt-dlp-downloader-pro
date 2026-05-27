@@ -138,8 +138,18 @@ def build_command(item, output_dir: str) -> list[str]:
     video_info = safe_get(item, "video_info")
     if video_info:
         try:
-            # Create a temporary file to write cached JSON metadata
-            temp_json = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json", encoding="utf-8")
+            # Create a temporary file inside our isolated scratch directory to write cached JSON metadata
+            from pathlib import Path
+            scratch_path = Path.home() / ".yt-downloader-scratch"
+            scratch_path.mkdir(parents=True, exist_ok=True)
+            
+            temp_json = tempfile.NamedTemporaryFile(
+                dir=str(scratch_path),
+                mode="w",
+                delete=False,
+                suffix=".json",
+                encoding="utf-8"
+            )
             json.dump(video_info, temp_json, ensure_ascii=False)
             temp_json.close()
             # Cache the temp path so downloader can clean it up

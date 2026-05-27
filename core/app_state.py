@@ -191,22 +191,170 @@ class AppState:
         except Exception:
             pass
 
-    _PREFERENCE_FIELDS = {
-        "output_dir", "current_lang", "current_theme", "active_profile",
-        "custom_settings", "sponsorblock_enabled", "browser_cookies", "speed_limit",
-        "metadata_flag", "thumbnail_flag", "subtitle_flag", "auto_subtitle_flag",
-        "restrict_filenames", "keep_video_flag", "embed_chapters", "concurrent_fragments",
-        "output_template", "extra_args", "folder_org", "compact_mode", "max_workers"
-    }
+    @property
+    def output_dir(self) -> str:
+        return self.preferences.output_dir
 
-    # Dynamic Delegation Pattern for Property Proxies
-    def __getattr__(self, name):
-        if name in AppState._PREFERENCE_FIELDS:
-            return getattr(self.preferences, name)
-        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+    @output_dir.setter
+    def output_dir(self, value: str):
+        self.preferences.output_dir = value
 
-    def __setattr__(self, name, value):
-        if name in AppState._PREFERENCE_FIELDS:
-            setattr(self.preferences, name, value)
-        else:
-            object.__setattr__(self, name, value)
+    @property
+    def current_lang(self) -> str:
+        return self.preferences.current_lang
+
+    @current_lang.setter
+    def current_lang(self, value: str):
+        self.preferences.current_lang = value
+
+    @property
+    def current_theme(self) -> str:
+        return self.preferences.current_theme
+
+    @current_theme.setter
+    def current_theme(self, value: str):
+        self.preferences.current_theme = value
+
+    @property
+    def active_profile(self) -> str:
+        return self.preferences.active_profile
+
+    @active_profile.setter
+    def active_profile(self, value: str):
+        self.preferences.active_profile = value
+
+    @property
+    def custom_settings(self) -> Dict:
+        return self.preferences.custom_settings
+
+    @custom_settings.setter
+    def custom_settings(self, value: Dict):
+        self.preferences.custom_settings = value
+
+    @property
+    def sponsorblock_enabled(self) -> bool:
+        return self.preferences.sponsorblock_enabled
+
+    @sponsorblock_enabled.setter
+    def sponsorblock_enabled(self, value: bool):
+        self.preferences.sponsorblock_enabled = value
+
+    @property
+    def browser_cookies(self) -> str:
+        return self.preferences.browser_cookies
+
+    @browser_cookies.setter
+    def browser_cookies(self, value: str):
+        self.preferences.browser_cookies = value
+
+    @property
+    def speed_limit(self) -> Optional[str]:
+        return self.preferences.speed_limit
+
+    @speed_limit.setter
+    def speed_limit(self, value: Optional[str]):
+        self.preferences.speed_limit = value
+
+    @property
+    def metadata_flag(self) -> bool:
+        return self.preferences.metadata_flag
+
+    @metadata_flag.setter
+    def metadata_flag(self, value: bool):
+        self.preferences.metadata_flag = value
+
+    @property
+    def thumbnail_flag(self) -> bool:
+        return self.preferences.thumbnail_flag
+
+    @thumbnail_flag.setter
+    def thumbnail_flag(self, value: bool):
+        self.preferences.thumbnail_flag = value
+
+    @property
+    def subtitle_flag(self) -> bool:
+        return self.preferences.subtitle_flag
+
+    @subtitle_flag.setter
+    def subtitle_flag(self, value: bool):
+        self.preferences.subtitle_flag = value
+
+    @property
+    def auto_subtitle_flag(self) -> bool:
+        return self.preferences.auto_subtitle_flag
+
+    @auto_subtitle_flag.setter
+    def auto_subtitle_flag(self, value: bool):
+        self.preferences.auto_subtitle_flag = value
+
+    @property
+    def restrict_filenames(self) -> bool:
+        return self.preferences.restrict_filenames
+
+    @restrict_filenames.setter
+    def restrict_filenames(self, value: bool):
+        self.preferences.restrict_filenames = value
+
+    @property
+    def keep_video_flag(self) -> bool:
+        return self.preferences.keep_video_flag
+
+    @keep_video_flag.setter
+    def keep_video_flag(self, value: bool):
+        self.preferences.keep_video_flag = value
+
+    @property
+    def embed_chapters(self) -> bool:
+        return self.preferences.embed_chapters
+
+    @embed_chapters.setter
+    def embed_chapters(self, value: bool):
+        self.preferences.embed_chapters = value
+
+    @property
+    def concurrent_fragments(self) -> str:
+        return self.preferences.concurrent_fragments
+
+    @concurrent_fragments.setter
+    def concurrent_fragments(self, value: str):
+        self.preferences.concurrent_fragments = value
+
+    @property
+    def output_template(self) -> str:
+        return self.preferences.output_template
+
+    @output_template.setter
+    def output_template(self, value: str):
+        self.preferences.output_template = value
+
+    @property
+    def extra_args(self) -> str:
+        return self.preferences.extra_args
+
+    @extra_args.setter
+    def extra_args(self, value: str):
+        self.preferences.extra_args = value
+
+    @property
+    def folder_org(self) -> str:
+        return self.preferences.folder_org
+
+    @folder_org.setter
+    def folder_org(self, value: str):
+        self.preferences.folder_org = value
+
+    @property
+    def compact_mode(self) -> bool:
+        return self.preferences.compact_mode
+
+    @compact_mode.setter
+    def compact_mode(self, value: bool):
+        self.preferences.compact_mode = value
+
+    @property
+    def max_workers(self) -> int:
+        return self.preferences.max_workers
+
+    @max_workers.setter
+    def max_workers(self, value: int):
+        self.preferences.max_workers = value

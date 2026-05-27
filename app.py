@@ -11,7 +11,28 @@ refresh_path_env()
 from core.app_state import AppState
 from ui.main_window import MainWindow
 
+def purge_scratch_directory():
+    """
+    Deterministik olarak önceki oturumlardan kalan tüm geçici 
+    dosyaları başlangıç anında temizler.
+    """
+    import shutil
+    from pathlib import Path
+    scratch_dir = Path.home() / ".yt-downloader-scratch"
+    
+    if scratch_dir.exists():
+        try:
+            shutil.rmtree(scratch_dir, ignore_errors=True)
+        except Exception as e:
+            print(f"[Garbage Collection] I/O Error: {e}")
+            
+    # Temiz bir başlangıç için klasörü yeniden oluştur
+    scratch_dir.mkdir(parents=True, exist_ok=True)
+
 def main() -> None:
+    # 0. Deterministik başlangıç çöp toplama (Garbage Collection)
+    purge_scratch_directory()
+    
     # 1. Initialize central application state configuration
     state = AppState()
     

@@ -1,7 +1,7 @@
 ; yt-dlp Downloader Pro - Inno Setup Configuration Script
 [Setup]
 AppName=yt-dlp Downloader Pro
-AppVersion=1.1.0
+AppVersion=1.2.0
 DefaultDirName={autopf}\yt-dlp Downloader Pro
 DefaultGroupName=yt-dlp Downloader Pro
 OutputDir=dist

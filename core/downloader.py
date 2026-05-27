@@ -31,15 +31,13 @@ def allow_sleep():
 
 def safe_put_ui(ui_queue, item):
     try:
+        # Bloklanmaya veya timeout'a kesinlikle izin yok
         ui_queue.put_nowait(item)
     except queue.Full:
-        if item[0] == "log":
-            pass  # Shed verbose logs under heavy load
-        else:
-            try:
-                ui_queue.put(item, timeout=0.1)
-            except Exception:
-                pass
+        # Load Shedding: UI yetişemiyorsa paketi düşür (drop).
+        # Progress stat'ları veya terminal logları anlıktır, bir sonraki tick'te yenisi gelir.
+        # Worker thread asla UI'ı beklememeli.
+        pass
 
 # Thread-safe subprocess tracking to prevent Zombie Processes
 active_subprocess_lock = threading.Lock()
@@ -209,10 +207,6 @@ def run_command_stream(cmd: list[str], task: DownloadTask, state: AppState, ui_q
     try:
         register_active_subprocess(process)
         for line in process.stdout:
-            if getattr(task, "is_paused", False):
-                while getattr(task, "is_paused", False) and not (cancel_event.is_set() or task.cancel_event.is_set()):
-                    time.sleep(0.2)
-
             # Prefix UI logs with task title for concurrent visibility
             safe_put_ui(ui_queue, ("log", f"[{task.title[:18]}...] {line}"))
 
@@ -440,14 +434,79 @@ def _process_macro_clips(task, output_file, lang, ui_queue, cancel_event) -> str
     ret_file = str(input_path.parent / f"{input_path.stem}_clips_generated")
 
     if task.merge_clips and len(micro_paths) > 1 and macro_clips:
-        safe_put_ui(ui_queue, ("log", f"[{task.title}] Losslessly merging fanned out segments via Concat Demuxer...\n"))
-        from core.merger import LosslessMerger
-        merger = LosslessMerger(ffmpeg_bin)
-
         merged_ext = EXPORT_PROFILES[macro_clips[0].get("profile", "Default (No Profile)")].ext if EXPORT_PROFILES.get(macro_clips[0].get("profile")) else input_path.suffix.lstrip(".")
         merged_output_path = input_path.parent / f"{input_path.stem}_merged.{merged_ext}"
 
-        success = merger.merge_clips(micro_paths, str(merged_output_path), cleanup=True)
+        # Homogeneity Check: Verify all clips have the exact same export profile
+        profiles_used = {mc.get("profile", "Default (No Profile)") for mc in macro_clips}
+        is_homogeneous = len(profiles_used) == 1
+
+        if is_homogeneous:
+            safe_put_ui(ui_queue, ("log", f"[{task.title}] Profiller eşleşti. Concat Demuxer ile kayıpsız birleştiriliyor...\n"))
+            from core.merger import LosslessMerger
+            merger = LosslessMerger(ffmpeg_bin)
+            success = merger.merge_clips(
+                micro_paths,
+                str(merged_output_path),
+                cleanup=True,
+                register_proc_cb=register_active_subprocess,
+                unregister_proc_cb=unregister_active_subprocess
+            )
+        else:
+            safe_put_ui(ui_queue, ("log", f"[{task.title}] Heterojen profiller tespit edildi. Filtreleme ile yeniden kodlanıyor (Transcode Merge)...\n"))
+            transcode_cmd = [ffmpeg_bin, "-y"]
+            for mp in micro_paths:
+                transcode_cmd.extend(["-i", mp])
+            
+            n = len(micro_paths)
+            if task.mode == "audio":
+                filter_str = "".join([f"[{i}:a]" for i in range(n)]) + f"concat=n={n}:v=0:a=1[a]"
+                transcode_cmd.extend([
+                    "-filter_complex", filter_str,
+                    "-map", "[a]",
+                    "-c:a", "aac", "-b:a", "192k",
+                    str(merged_output_path)
+                ])
+            else:
+                filter_str = "".join([f"[{i}:v][{i}:a]" for i in range(n)]) + f"concat=n={n}:v=1:a=1[v][a]"
+                transcode_cmd.extend([
+                    "-filter_complex", filter_str,
+                    "-map", "[v]", "-map", "[a]",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+                    "-c:a", "aac", "-b:a", "192k",
+                    str(merged_output_path)
+                ])
+
+            startupinfo = None
+            if os.name == 'nt':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+            process = subprocess.Popen(
+                transcode_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                startupinfo=startupinfo,
+                text=True,
+                encoding="utf-8",
+                errors="replace"
+            )
+            
+            register_active_subprocess(process)
+            try:
+                stdout_data, _ = process.communicate()
+            finally:
+                unregister_active_subprocess(process)
+                
+            success = merged_output_path.exists() and process.returncode == 0
+            
+            if success:
+                for mp in micro_paths:
+                    try:
+                        os.remove(mp)
+                    except:
+                        pass
+
         if success and merged_output_path.exists():
             ret_file = str(merged_output_path)
             add_download_record(

@@ -8,7 +8,7 @@ class LosslessMerger:
     def __init__(self, ffmpeg_path: str = "ffmpeg"):
         self.ffmpeg_path = ffmpeg_path
 
-    def merge_clips(self, clip_paths: list[str], output_path: str, cleanup: bool = False) -> bool:
+    def merge_clips(self, clip_paths: list[str], output_path: str, cleanup: bool = False, register_proc_cb=None, unregister_proc_cb=None) -> bool:
         if len(clip_paths) < 2:
             print("[Merge Engine] At least 2 clips are required to perform merge.")
             return False
@@ -52,7 +52,7 @@ class LosslessMerger:
                 startupinfo = subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
-            result = subprocess.run(
+            process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -64,8 +64,17 @@ class LosslessMerger:
                 shell=False
             )
 
-            if result.returncode != 0:
-                print(f"[Merge Engine] FFmpeg demux failed with returncode {result.returncode}:\n{result.stderr}")
+            if register_proc_cb:
+                register_proc_cb(process)
+
+            try:
+                stdout_data, stderr_data = process.communicate()
+            finally:
+                if unregister_proc_cb:
+                    unregister_proc_cb(process)
+
+            if process.returncode != 0:
+                print(f"[Merge Engine] FFmpeg demux failed with returncode {process.returncode}:\n{stderr_data}")
                 return False
 
             print(f"[Merge Engine] Finished successfully: {output_path}")
