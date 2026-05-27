@@ -111,10 +111,12 @@ class ProgressPanel(ctk.CTkFrame):
         progress_container.grid_columnconfigure(0, weight=1)
         progress_container.grid_columnconfigure(1, weight=0)
 
+        is_dark = ctk.get_appearance_mode() == "Dark"
+        bg_card_col = THEME_CARD_BG[1] if is_dark else THEME_CARD_BG[0]
         self.progress_canvas = tk.Canvas(
             progress_container,
             height=12,
-            bg=THEME_CARD_BG,
+            bg=bg_card_col,
             highlightthickness=0,
             bd=0
         )
@@ -178,7 +180,8 @@ class ProgressPanel(ctk.CTkFrame):
         self._build_dashboard_stat(2, TRANSLATIONS[lang]["lbl_size"], "0.0 MB", "_size")
 
         # Live Speed Sparkline Graph (Row 5 - created once with O(1)coords updates)
-        self.graph_canvas = tk.Canvas(self, height=50, bg=THEME_BG, highlightthickness=0, bd=0)
+        bg_col = THEME_BG[1] if is_dark else THEME_BG[0]
+        self.graph_canvas = tk.Canvas(self, height=50, bg=bg_col, highlightthickness=0, bd=0)
         self.graph_canvas.grid(row=5, column=0, padx=20, pady=(0, 12), sticky="ew")
         
         # Grid lines (draw reference lines once)
@@ -274,6 +277,9 @@ class ProgressPanel(ctk.CTkFrame):
         self.progress_canvas.delete("all")
         
         is_dark = ctk.get_appearance_mode() == "Dark"
+        bg_card_col = THEME_CARD_BG[1] if is_dark else THEME_CARD_BG[0]
+        self.progress_canvas.configure(bg=bg_card_col)
+        
         bg_col = THEME_BG[1] if is_dark else THEME_BG[0]
         
         # Resolve accent indigo / override color

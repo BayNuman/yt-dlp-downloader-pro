@@ -1058,6 +1058,13 @@ class MainWindow(ctk.CTk):
             self.app_state.current_theme = "Dark"
             ctk.set_appearance_mode("Dark")
             self.theme_btn.configure(text=TRANSLATIONS[self.app_state.current_lang]["theme_dark"])
+        
+        # Redraw standard tk.Canvas elements to reflect theme changes instantly
+        if hasattr(self, "progress_panel"):
+            self.progress_panel.draw_progress()
+            self.progress_panel._redraw_sparkline()
+        if hasattr(self, "preview_panel"):
+            self.preview_panel.draw_sponsor_overlay()
 
     def _toggle_language(self, choice: str):
         LANG_MAP = {
