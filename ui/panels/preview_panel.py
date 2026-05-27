@@ -27,6 +27,7 @@ class CTkRangeSlider(ctk.CTkCanvas):
         self.is_warning = False  # Warning state trigger for limits violations
         self.pad = 12
         self.active_handle = None
+        self.sponsor_segments = []  # Premium SponsorBlock timeline segments
 
         self.bind("<Button-1>", self._on_click)
         self.bind("<B1-Motion>", self._on_drag)
@@ -70,9 +71,12 @@ class CTkRangeSlider(ctk.CTkCanvas):
         # Draw background track
         self.create_line(self.pad, cy, w - self.pad, cy, fill=track_bg, width=6, capstyle="round")
 
-        # Draw active highlighted region
         usable_width = w - 2 * self.pad
         div = (self.max_val - self.min_val) if (self.max_val - self.min_val) > 0 else 1.0
+
+        # Visual sponsor segments are now drawn in the separate sponsor_overlay_canvas to ensure modular layout separation.
+
+        # Draw active highlighted region
         x_start = self.pad + ((self.value_start - self.min_val) / div) * usable_width
         x_end = self.pad + ((self.value_end - self.min_val) / div) * usable_width
 
@@ -294,16 +298,27 @@ class ClipRow(ctk.CTkFrame):
             command=self._on_slider_moved,
             height=26
         )
-        self.slider.grid(row=2, column=0, columnspan=4, padx=8, pady=4, sticky="ew")
+        self.slider.grid(row=2, column=0, columnspan=4, padx=8, pady=(4, 0), sticky="ew")
 
-        # Row 3: Validation Label
+        # Row 3: SponsorBlock Visual Canvas Overlay (Grid aligned, same width as slider)
+        self.sponsor_overlay_canvas = ctk.CTkCanvas(
+            self,
+            height=8,
+            bg="#121b2d" if ctk.get_appearance_mode() == "Dark" else "#ffffff",
+            highlightthickness=0,
+            borderwidth=0
+        )
+        self.sponsor_overlay_canvas.grid(row=3, column=0, columnspan=4, padx=12, pady=(2, 4), sticky="ew")
+        self.sponsor_overlay_canvas.bind("<Configure>", lambda e: self.draw_sponsor_overlay())
+
+        # Row 4: Validation Label
         self.validation_lbl = ctk.CTkLabel(
             self,
             text="",
             text_color=THEME_ACCENT_RED,
             font=ctk.CTkFont(family="Segoe UI", size=10)
         )
-        self.validation_lbl.grid(row=3, column=0, columnspan=4, padx=8, pady=(2, 6), sticky="w")
+        self.validation_lbl.grid(row=4, column=0, columnspan=4, padx=8, pady=(2, 6), sticky="w")
         self._validate_entries()
 
     def _on_slider_moved(self, start, end):
@@ -313,6 +328,54 @@ class ClipRow(ctk.CTkFrame):
 
     def _on_profile_selected(self, choice):
         self._validate_entries()
+
+    def draw_sponsor_overlay(self):
+        self.sponsor_overlay_canvas.delete("all")
+        w = self.sponsor_overlay_canvas.winfo_width()
+        h = self.sponsor_overlay_canvas.winfo_height()
+        if w < 10 or h < 4:
+            return
+            
+        is_dark = ctk.get_appearance_mode() == "Dark"
+        bg_color = "#121b2d" if is_dark else "#ffffff"
+        self.sponsor_overlay_canvas.configure(bg=bg_color)
+        
+        cy = h / 2
+        
+        # Base track (subtle indicator bg)
+        self.sponsor_overlay_canvas.create_line(12, cy, w - 12, cy, fill="#22334f" if is_dark else "#e2e8f0", width=4, capstyle="round")
+        
+        if not hasattr(self.slider, "sponsor_segments") or not self.slider.sponsor_segments:
+            return
+            
+        usable_width = w - 24
+        div = (self.max_val - self.min_val) if (self.max_val - self.min_val) > 0 else 1.0
+        
+        category_colors = {
+            "sponsor": "#f1c40f",
+            "intro": "#3498db",
+            "outro": "#e74c3c",
+            "interaction": "#9b59b6",
+            "selfpromo": "#e67e22",
+            "preview": "#1abc9c",
+            "music_offtopic": "#16a085",
+            "filler": "#7f8c8d"
+        }
+        
+        for seg in self.slider.sponsor_segments:
+            seg_start = seg.get("start", 0.0)
+            seg_end = seg.get("end", 0.0)
+            cat = seg.get("category", "sponsor")
+            color = category_colors.get(cat.lower(), "#f1c40f")
+            
+            x_seg_start = 12 + ((seg_start - self.min_val) / div) * usable_width
+            x_seg_end = 12 + ((seg_end - self.min_val) / div) * usable_width
+            
+            x_seg_start = max(12.0, min(x_seg_start, float(w - 12)))
+            x_seg_end = max(12.0, min(x_seg_end, float(w - 12)))
+            
+            if x_seg_end > x_seg_start:
+                self.sponsor_overlay_canvas.create_line(x_seg_start, cy, x_seg_end, cy, fill=color, width=6, capstyle="butt")
 
     def _validate_entries(self, *args):
         try:
@@ -359,7 +422,7 @@ class ClipRow(ctk.CTkFrame):
 
 
 class PreviewPanel(ctk.CTkFrame):
-    def __init__(self, parent, state: AppState, on_chapter_click_callback, **kwargs):
+    def __init__(self, parent, state: AppState, on_chapter_click_callback, on_create_channel_rule_callback=None, **kwargs):
         super().__init__(
             parent,
             fg_color=THEME_CARD_BG,
@@ -370,6 +433,10 @@ class PreviewPanel(ctk.CTkFrame):
         )
         self.app_state = state
         self.on_chapter_click = on_chapter_click_callback
+        self.on_create_channel_rule = on_create_channel_rule_callback
+        
+        self.current_channel_id = None
+        self.current_channel_name = None
         
         # Clip State Variables
         self.clip_enabled_var = tk.BooleanVar(value=False)
@@ -478,6 +545,48 @@ class PreviewPanel(ctk.CTkFrame):
 
         self.suggested_profile = None
 
+        # Channel Auto-Rule Banner Frame (Row 5)
+        self.preview_channel_rule_frame = ctk.CTkFrame(self.meta_info, fg_color="transparent")
+        self.preview_channel_rule_frame.grid(row=5, column=0, sticky="w", pady=(4, 0))
+        self.preview_channel_rule_frame.grid_remove()
+
+        self.btn_channel_rule = ctk.CTkButton(
+            self.preview_channel_rule_frame,
+            text="",
+            height=24,
+            corner_radius=6,
+            fg_color=THEME_BG,
+            text_color=THEME_TEXT_PRIMARY,
+            hover_color=THEME_CARD_BORDER,
+            border_color=THEME_CARD_BORDER,
+            border_width=1,
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            command=self._on_channel_rule_clicked
+        )
+        self.btn_channel_rule.pack(side="left")
+
+    def update_channel_rule_button_text(self):
+        if not hasattr(self, "btn_channel_rule"):
+            return
+        lang = self.app_state.current_lang
+        from core.history import get_channel_rule
+        has_rule = False
+        if self.current_channel_id:
+            rule = get_channel_rule(self.current_channel_id)
+            if rule:
+                has_rule = True
+                
+        if has_rule:
+            txt = "✅ Kanal Kuralı Aktif (Düzenle)" if lang == "tr" else ("✅ Regla de Canal Activa (Editar)" if lang == "es" else "✅ Channel Rule Active (Edit)")
+        else:
+            txt = "📌 Bu Kanal İçin Kural Oluştur" if lang == "tr" else ("📌 Crear Regla Para Este Canal" if lang == "es" else "📌 Create Rule For This Channel")
+        self.btn_channel_rule.configure(text=txt)
+
+    def _on_channel_rule_clicked(self):
+        if self.on_create_channel_rule and self.current_channel_id:
+            self.on_create_channel_rule(self.current_channel_id, self.current_channel_name)
+            self.update_channel_rule_button_text()
+
         # Chapters Section Frame (Scrollable horizontal chapter bar)
         self.chapters_frame = ctk.CTkScrollableFrame(
             self,
@@ -534,9 +643,13 @@ class PreviewPanel(ctk.CTkFrame):
         self.clips_scroll_frame.grid(row=1, column=0, padx=6, pady=6, sticky="ew")
         self.clips_scroll_frame.grid_columnconfigure(0, weight=1)
 
-        # "➕ Klip Ekle (Add Clip)" button (Row 2)
+        # Button container for clipping operations (Row 2)
+        self.clip_buttons_frame = ctk.CTkFrame(self.clip_frame, fg_color="transparent")
+        self.clip_buttons_frame.grid(row=2, column=0, padx=6, pady=4, sticky="ew")
+        self.clip_buttons_frame.grid_columnconfigure((0, 1), weight=1)
+
         self.btn_add_clip = ctk.CTkButton(
-            self.clip_frame,
+            self.clip_buttons_frame,
             text="➕ Klip Ekle" if lang == "tr" else ("➕ Añadir Clip" if lang == "es" else "➕ Add Clip"),
             fg_color=THEME_BG,
             text_color=THEME_TEXT_PRIMARY,
@@ -547,7 +660,22 @@ class PreviewPanel(ctk.CTkFrame):
             command=self.add_clip_row_default,
             height=30
         )
-        self.btn_add_clip.grid(row=2, column=0, padx=6, pady=4, sticky="ew")
+        self.btn_add_clip.grid(row=0, column=0, padx=(0, 4), sticky="ew")
+
+        self.btn_clean_sponsors = ctk.CTkButton(
+            self.clip_buttons_frame,
+            text="✂️ Sponsorları Temizle" if lang == "tr" else ("✂️ Quitar Sponsors" if lang == "es" else "✂️ Clean Sponsors"),
+            fg_color=THEME_BG,
+            text_color=THEME_TEXT_PRIMARY,
+            hover_color=THEME_CARD_BORDER,
+            border_color=THEME_CARD_BORDER,
+            border_width=1,
+            state="disabled",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            command=self.clean_sponsors,
+            height=30
+        )
+        self.btn_clean_sponsors.grid(row=0, column=1, padx=(4, 0), sticky="ew")
 
         self._on_clip_toggled() # Disable entry fields by default if checkbox off
 
@@ -555,12 +683,97 @@ class PreviewPanel(ctk.CTkFrame):
         enabled = self.clip_enabled_var.get()
         if enabled:
             self.clips_scroll_frame.grid()
-            self.btn_add_clip.grid()
+            self.clip_buttons_frame.grid()
             if not self.clip_rows:
                 self.add_clip_row_default()
         else:
             self.clips_scroll_frame.grid_remove()
-            self.btn_add_clip.grid_remove()
+            self.clip_buttons_frame.grid_remove()
+
+    def _bg_fetch_sponsor_segments(self, video_id):
+        import urllib.request
+        import json
+        import threading
+        
+        def run():
+            url = f"https://sponsor.ajay.app/api/skipSegments?videoID={video_id}"
+            try:
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    if response.status == 200:
+                        data = json.loads(response.read().decode('utf-8'))
+                        segments = []
+                        for entry in data:
+                            seg = entry.get("segment")
+                            cat = entry.get("category", "sponsor")
+                            if seg and len(seg) == 2:
+                                segments.append({
+                                    "start": float(seg[0]),
+                                    "end": float(seg[1]),
+                                    "category": cat
+                                })
+                        if segments:
+                            self.after(0, self._on_sponsor_segments_loaded, segments)
+            except Exception as e:
+                print(f"[SponsorBlock] Fetch failed or no segments found: {e}")
+                
+        threading.Thread(target=run, daemon=True).start()
+
+    def _on_sponsor_segments_loaded(self, segments):
+        self.sponsor_segments = segments
+        if hasattr(self, "btn_clean_sponsors"):
+            self.btn_clean_sponsors.configure(state="normal")
+        for row in self.clip_rows:
+            if hasattr(row, "slider"):
+                row.slider.sponsor_segments = segments
+                row.slider.draw()
+            if hasattr(row, "draw_sponsor_overlay"):
+                row.draw_sponsor_overlay()
+
+    def clean_sponsors(self):
+        if not hasattr(self, "sponsor_segments") or not self.sponsor_segments:
+            return
+            
+        duration = 0.0
+        if self.app_state.current_video_info:
+            duration = self.app_state.current_video_info.get("duration", 0.0)
+        if duration <= 0:
+            return
+            
+        # Inverted Sponsor Block Interval Merging with edge cases
+        blocked = sorted([(s["start"], s["end"]) for s in self.sponsor_segments])
+        merged = []
+        for start, end in blocked:
+            if merged and start <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+            else:
+                merged.append([start, end])
+        
+        # Invert merged blocks to find safe clips in [0, duration]
+        safe_clips = []
+        cursor = 0.0
+        for blk_start, blk_end in merged:
+            if cursor < blk_start - 0.5:  # Filter out short clips < 0.5 sec
+                safe_clips.append((cursor, blk_start))
+            cursor = blk_end
+        if cursor < duration - 0.5:
+            safe_clips.append((cursor, duration))
+        
+        # Fallback: if all segments are sponsored (safe_clips empty), provide full video
+        if not safe_clips:
+            safe_clips = [(0.0, duration)]
+            
+        # Clear current clip rows and enable clipping
+        for row in list(self.clip_rows):
+            row.destroy()
+        self.clip_rows.clear()
+        
+        self.clip_enabled_var.set(True)
+        self._on_clip_toggled()
+        
+        # Populate safe clips
+        for start, end in safe_clips:
+            self.add_clip_row(start, end)
 
     def add_clip_row(self, start_val, end_val, profile="Default (No Profile)"):
         duration = 0.0
@@ -577,6 +790,11 @@ class PreviewPanel(ctk.CTkFrame):
             end_val=end_val,
             on_delete=self._remove_clip_row
         )
+        if hasattr(self, "sponsor_segments") and self.sponsor_segments:
+            row.slider.sponsor_segments = self.sponsor_segments
+            row.slider.draw()
+            if hasattr(row, "draw_sponsor_overlay"):
+                row.draw_sponsor_overlay()
         row.export_profile_var.set(profile)
         row.pack(fill="x", padx=4, pady=4)
         self.clip_rows.append(row)
@@ -671,9 +889,17 @@ class PreviewPanel(ctk.CTkFrame):
         self.meta_info.grid_remove()
         self.chapters_frame.grid_remove()
         self.clip_frame.grid_remove()
+        self.current_channel_id = None
+        self.current_channel_name = None
+        if hasattr(self, "preview_channel_rule_frame"):
+            self.preview_channel_rule_frame.grid_remove()
         self.preview_loading_lbl.grid()
 
     def hide(self):
+        self.current_channel_id = None
+        self.current_channel_name = None
+        if hasattr(self, "preview_channel_rule_frame"):
+            self.preview_channel_rule_frame.grid_remove()
         self.grid_remove()
 
     def show_metadata(self, meta: dict, thumbnail_img: ImageTk.PhotoImage = None):
@@ -682,6 +908,24 @@ class PreviewPanel(ctk.CTkFrame):
         self.thumb_label.grid()
         self.meta_info.grid()
         self.clip_frame.grid()
+
+        # Channel rule tracking
+        self.current_channel_id = meta.get("channel_id")
+        self.current_channel_name = meta.get("channel_name") or meta.get("uploader")
+        if self.current_channel_id:
+            self.preview_channel_rule_frame.grid()
+            self.update_channel_rule_button_text()
+        else:
+            self.preview_channel_rule_frame.grid_remove()
+
+        # Reset and trigger SponsorBlock fetching for YouTube videos
+        self.sponsor_segments = []
+        if hasattr(self, "btn_clean_sponsors"):
+            self.btn_clean_sponsors.configure(state="disabled")
+        video_id = meta.get("id")
+        extractor = meta.get("extractor", "").lower()
+        if video_id and "youtube" in extractor:
+            self._bg_fetch_sponsor_segments(video_id)
 
         if thumbnail_img:
             self.thumb_label.configure(image=thumbnail_img, text="")
@@ -772,6 +1016,10 @@ class PreviewPanel(ctk.CTkFrame):
         self.meta_info.grid_remove()
         self.chapters_frame.grid_remove()
         self.clip_frame.grid_remove()
+        self.current_channel_id = None
+        self.current_channel_name = None
+        if hasattr(self, "preview_channel_rule_frame"):
+            self.preview_channel_rule_frame.grid_remove()
         self.preview_loading_lbl.configure(text=TRANSLATIONS[self.app_state.current_lang]["lbl_preview_err"])
         self.preview_loading_lbl.grid()
 
@@ -785,6 +1033,8 @@ class PreviewPanel(ctk.CTkFrame):
         # Localize relocated clipping labels
         self.chk_clip_enable.configure(text=TRANSLATIONS[lang]["lbl_clip_enable"])
         self.btn_add_clip.configure(text="➕ Klip Ekle" if lang == "tr" else ("➕ Añadir Clip" if lang == "es" else "➕ Add Clip"))
+        
+        self.update_channel_rule_button_text()
         
         # Refresh all active rows
         for row in self.clip_rows:

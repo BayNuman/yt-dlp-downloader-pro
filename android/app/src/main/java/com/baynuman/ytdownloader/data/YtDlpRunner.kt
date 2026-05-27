@@ -90,6 +90,7 @@ class YtDlpRunner(
             onEvent(DownloadEvent.LogLine("$ yt-dlp ${commandBuilder.formatForLog(primaryCommand)}\n"))
 
             var result = runCommand(primaryCommand, normalizedRequest.urls, onEvent)
+            result.lastDownloadedFilePath?.let { tempFile = File(it) }
             val shouldFallback = (
                 result.exitCode != 0 &&
                     result.sawHttp403 &&
@@ -108,6 +109,7 @@ class YtDlpRunner(
                 val fallbackCommand = commandBuilder.buildFallbackCommand(normalizedRequest)
                 onEvent(DownloadEvent.LogLine("$ yt-dlp ${commandBuilder.formatForLog(fallbackCommand)}\n"))
                 result = runCommand(fallbackCommand, normalizedRequest.urls, onEvent)
+                result.lastDownloadedFilePath?.let { tempFile = File(it) }
             }
 
             if (result.sawOutdatedWarning) {
@@ -115,6 +117,7 @@ class YtDlpRunner(
             }
 
             if (cancelRequested || result.canceled) {
+                tempFile?.let { cleanEmptyDirectories(it, outputDir) }
                 onEvent(DownloadEvent.Status("Iptal edildi"))
                 onEvent(DownloadEvent.Finished(success = false, exitCode = result.exitCode))
                 logRunnerEvent("download_canceled")
@@ -140,6 +143,7 @@ class YtDlpRunner(
             tempFile = downloadedFile
 
             var finalSize = 0L
+            var finalPath = ""
 
             // Stage 3: FFmpeg Slicing & Profiling (LeetCode 56 Consolidated Clips)
             if (isClipsOperation) {
@@ -149,11 +153,12 @@ class YtDlpRunner(
                 val expectedSizeMb = (downloadedFile.length() / (1024 * 1024)) * 2
                 checkStorageCapacity(normalizedRequest.outputDir, minMbRequired = maxOf(50, expectedSizeMb))
 
-                val microFiles = runFFmpegSlicing(downloadedFile, macroClips, onEvent)
+                val microFiles = runFFmpegSlicing(downloadedFile, macroClips, normalizedRequest, onEvent)
                 
                 // Lossless Merge of Sliced Clips
                 val mergedFile = runFFmpegConcat(microFiles, outputDir, onEvent)
                 finalSize = mergedFile.length()
+                finalPath = mergedFile.absolutePath
                 
                 // Cleanup sliced parts if merge was successful
                 microFiles.forEach { f -> if (f.exists()) f.delete() }
@@ -162,31 +167,36 @@ class YtDlpRunner(
                 scanToMediaStore(mergedFile, onEvent)
             } else {
                 finalSize = downloadedFile.length()
+                finalPath = downloadedFile.absolutePath
                 // Single standard file download completion
                 scanToMediaStore(downloadedFile, onEvent)
             }
 
             onEvent(DownloadEvent.Progress(1f))
             onEvent(DownloadEvent.Status("Indirme tamamlandi"))
-            onEvent(DownloadEvent.Finished(success = true, exitCode = 0, sizeBytes = finalSize))
+            onEvent(DownloadEvent.Finished(success = true, exitCode = 0, sizeBytes = finalSize, filePath = finalPath))
             logRunnerEvent("download_pipeline_success")
 
         } catch (e: PipelineException.InsufficientStorageException) {
+            tempFile?.let { cleanEmptyDirectories(it, outputDir) }
             onEvent(DownloadEvent.LogLine("[hata] Disk doldu! ${e.message}\n"))
             onEvent(DownloadEvent.Status("Depolama Hatasi"))
             onEvent(DownloadEvent.Finished(success = false, exitCode = -2))
             logRunnerEvent("pipeline_storage_error", level = Log.ERROR)
         } catch (e: PipelineException.FFmpegSlicingException) {
+            tempFile?.let { cleanEmptyDirectories(it, outputDir) }
             onEvent(DownloadEvent.LogLine("[hata] Video kesme hatasi: ${e.message}\n"))
             onEvent(DownloadEvent.Status("FFmpeg Hatasi"))
             onEvent(DownloadEvent.Finished(success = false, exitCode = -3))
             logRunnerEvent("pipeline_ffmpeg_error", level = Log.ERROR)
         } catch (e: PipelineException.YtDlpExecutionException) {
+            tempFile?.let { cleanEmptyDirectories(it, outputDir) }
             onEvent(DownloadEvent.LogLine("[hata] Basarisiz: ${e.message}\n"))
             onEvent(DownloadEvent.Status("Indirme Hatasi"))
             onEvent(DownloadEvent.Finished(success = false, exitCode = -4))
             logRunnerEvent("pipeline_ytdlp_error", level = Log.ERROR)
         } catch (e: Exception) {
+            tempFile?.let { cleanEmptyDirectories(it, outputDir) }
             onEvent(DownloadEvent.LogLine("[hata] Beklenmeyen hata: ${e.localizedMessage}\n"))
             onEvent(DownloadEvent.Status("Hata Olustu"))
             onEvent(DownloadEvent.Finished(success = false, exitCode = -1))
@@ -245,7 +255,7 @@ class YtDlpRunner(
             ?.maxByOrNull { it.lastModified() }
     }
 
-    private fun getFFmpegFile(): File {
+    fun getFFmpegFile(): File {
         try {
             val youtubeDLClass = com.yausername.youtubedl_android.YoutubeDL::class.java
             val ffmpegPathField = youtubeDLClass.getDeclaredField("ffmpegPath")
@@ -308,6 +318,7 @@ class YtDlpRunner(
     private suspend fun runFFmpegSlicing(
         downloadedFile: File,
         macroClips: List<MacroClip>,
+        request: DownloadRequest,
         onEvent: (DownloadEvent) -> Unit
     ): List<File> {
         val ffmpegBin = getFFmpegFile()
@@ -329,16 +340,64 @@ class YtDlpRunner(
                 val duration = micro.end - micro.start
                 onEvent(DownloadEvent.LogLine("[slicing] Klip $clipIndex kesiliyor: ${micro.start}s - ${micro.end}s (Sure: ${duration}s)\n"))
                 
-                // Execute seeking & lossless slicing
-                val cmd = listOf(
-                    ffmpegBin.absolutePath,
-                    "-y",
-                    "-ss", micro.start.toString(),
-                    "-t", duration.toString(),
-                    "-i", downloadedFile.absolutePath,
-                    "-c", "copy",
-                    slicedFile.absolutePath
-                )
+                val preciseCut = request.clipPrecise
+                val isAudio = request.mode == DownloadMode.AUDIO
+
+                val cmd = if (preciseCut) {
+                    if (isAudio) {
+                        val audFmt = request.audioFormat.lowercase()
+                        if (audFmt == "mp3") {
+                            listOf(
+                                ffmpegBin.absolutePath, "-y",
+                                "-i", downloadedFile.absolutePath,
+                                "-ss", micro.start.toString(),
+                                "-t", duration.toString(),
+                                "-c:a", "libmp3lame", "-b:a", "192k",
+                                slicedFile.absolutePath
+                            )
+                        } else if (audFmt == "m4a" || audFmt == "aac") {
+                            listOf(
+                                ffmpegBin.absolutePath, "-y",
+                                "-i", downloadedFile.absolutePath,
+                                "-ss", micro.start.toString(),
+                                "-t", duration.toString(),
+                                "-c:a", "aac", "-b:a", "192k",
+                                slicedFile.absolutePath
+                            )
+                        } else {
+                            listOf(
+                                ffmpegBin.absolutePath, "-y",
+                                "-ss", micro.start.toString(),
+                                "-i", downloadedFile.absolutePath,
+                                "-t", duration.toString(),
+                                "-c", "copy",
+                                "-avoid_negative_ts", "make_zero",
+                                slicedFile.absolutePath
+                            )
+                        }
+                    } else {
+                        listOf(
+                            ffmpegBin.absolutePath, "-y",
+                            "-i", downloadedFile.absolutePath,
+                            "-ss", micro.start.toString(),
+                            "-t", duration.toString(),
+                            "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+                            "-c:a", "aac", "-b:a", "192k",
+                            slicedFile.absolutePath
+                        )
+                    }
+                } else {
+                    listOf(
+                        ffmpegBin.absolutePath,
+                        "-y",
+                        "-ss", micro.start.toString(),
+                        "-i", downloadedFile.absolutePath,
+                        "-t", duration.toString(),
+                        "-c", "copy",
+                        "-avoid_negative_ts", "make_zero",
+                        slicedFile.absolutePath
+                    )
+                }
                 
                 val exitCode = runFFmpegCommand(cmd, onEvent)
                 if (exitCode != 0 || !slicedFile.exists()) {
@@ -404,6 +463,36 @@ class YtDlpRunner(
         }
 
         return finalFile
+    }
+
+    private fun cleanEmptyDirectories(path: File, baseDir: File) {
+        try {
+            val resolvedPath = path.canonicalFile
+            val resolvedBase = baseDir.canonicalFile
+            
+            var folder = if (resolvedPath.isFile) resolvedPath.parentFile else resolvedPath
+            
+            while (folder != null && folder != resolvedBase && folder.absolutePath.startsWith(resolvedBase.absolutePath)) {
+                if (folder.exists() && folder.isDirectory) {
+                    val children = folder.listFiles()
+                    if (children.isNullOrEmpty()) {
+                        try {
+                            folder.delete()
+                        } catch (e: Exception) {
+                            Log.e(RUNNER_TAG, "Failed to remove folder ${folder.absolutePath}: ${e.message}")
+                            break
+                        }
+                    } else {
+                        break // not empty, stop traversal
+                    }
+                } else {
+                    break
+                }
+                folder = folder.parentFile
+            }
+        } catch (e: Exception) {
+            Log.e(RUNNER_TAG, "Error in cleanEmptyDirectories: ${e.message}", e)
+        }
     }
 
     private fun scanToMediaStore(file: File, onEvent: (DownloadEvent) -> Unit) {

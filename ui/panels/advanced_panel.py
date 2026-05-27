@@ -24,9 +24,54 @@ class AdvancedPanel(ctk.CTkFrame):
         self.app_state = state
         self.on_preset_loaded = on_preset_load_callback
         
+        # User explicit setting tracking
+        self.user_explicit = False
+        self._applying_programmatic = False
+        
         self.grid_columnconfigure(0, weight=1)
         self._build_ui()
         self._load_presets_dropdown()
+        self._setup_change_traces()
+
+    def _setup_change_traces(self):
+        vars_to_trace = [
+            self.mode_var,
+            self.video_profile_var,
+            self.custom_video_height_var,
+            self.video_container_var,
+            self.audio_format_var,
+            self.audio_quality_var,
+            self.video_audio_codec_var,
+            self.playlist_var,
+            self.metadata_var,
+            self.thumbnail_var,
+            self.subs_var,
+            self.auto_subs_var,
+            self.restrict_names_var,
+            self.download_archive_var,
+            self.retries_var,
+            self.concurrent_fragments_var,
+            self.cookies_var,
+            self.browser_cookies_var,
+            self.youtube_403_fallback_var,
+            self.max_workers_var,
+            self.scheduler_enabled_var,
+            self.schedule_time_var,
+            self.playlist_items_var,
+            self.max_downloads_var,
+            self.rate_limit_var,
+            self.sponsorblock_var,
+            self.folder_org_var
+        ]
+        for var in vars_to_trace:
+            var.trace_add("write", self._on_var_changed)
+
+    def _on_var_changed(self, *args):
+        if not self._applying_programmatic:
+            self.user_explicit = True
+
+    def reset_user_explicit(self):
+        self.user_explicit = False
 
     def _build_ui(self):
         lang = self.app_state.current_lang
@@ -48,6 +93,7 @@ class AdvancedPanel(ctk.CTkFrame):
         self.tab_codec = self.tabview.add(TRANSLATIONS[lang]["tab_codecs"])
         self.tab_limits = self.tabview.add(TRANSLATIONS[lang]["tab_limits"])
         self.tab_flags = self.tabview.add(TRANSLATIONS[lang]["tab_flags"])
+        self.tab_schedule = self.tabview.add(TRANSLATIONS[lang]["tab_scheduling"])
 
         # ==================== TAB 1: RESOLUTION & CODECS ====================
         self.tab_codec.grid_columnconfigure((0, 1), weight=1)
@@ -317,6 +363,29 @@ class AdvancedPanel(ctk.CTkFrame):
         self.auto_subs_check = ctk.CTkCheckBox(f1, text=TRANSLATIONS[lang]["chk_auto_subs"], variable=self.auto_subs_var, fg_color=THEME_ACCENT_INDIGO, text_color=THEME_TEXT_PRIMARY)
         self.auto_subs_check.grid(row=3, column=0, padx=18, pady=4, sticky="w")
 
+        # Smart Folder Organization UI
+        self.lbl_folder_org = ctk.CTkLabel(f1, text=TRANSLATIONS[lang]["lbl_folder_org"], text_color=THEME_TEXT_PRIMARY)
+        self.lbl_folder_org.grid(row=4, column=0, sticky="w", padx=6, pady=(10, 2))
+        
+        self.folder_org_var = ctk.StringVar(value="None")
+        
+        self.folder_org_menu = ctk.CTkOptionMenu(
+            f1,
+            values=[],
+            variable=self.folder_org_var,
+            fg_color=THEME_BG,
+            button_color=THEME_BG,
+            button_hover_color=THEME_CARD_BORDER,
+            text_color=THEME_TEXT_PRIMARY,
+            dropdown_fg_color=THEME_CARD_BG,
+            dropdown_hover_color=THEME_CARD_BORDER,
+            dropdown_text_color=THEME_TEXT_PRIMARY,
+            height=30,
+            command=self._on_folder_org_menu_changed
+        )
+        self.folder_org_menu.grid(row=5, column=0, sticky="ew", padx=6, pady=2)
+        self._update_folder_org_dropdown()
+
         f2 = ctk.CTkFrame(self.tab_flags, fg_color="transparent")
         f2.grid(row=0, column=1, padx=10, pady=4, sticky="nsew")
         
@@ -347,6 +416,52 @@ class AdvancedPanel(ctk.CTkFrame):
         
         self.chk_sponsorblock = ctk.CTkCheckBox(f2, text=TRANSLATIONS[lang]["chk_sponsorblock"], variable=self.sponsorblock_var, fg_color=THEME_ACCENT_INDIGO, text_color=THEME_TEXT_PRIMARY)
         self.chk_sponsorblock.grid(row=6, column=0, padx=6, pady=2, sticky="w")
+
+        # ==================== TAB 4: SCHEDULER & ZAMANLAYICI ====================
+        self.tab_schedule.grid_columnconfigure(0, weight=1)
+        
+        s_frame = ctk.CTkFrame(self.tab_schedule, fg_color="transparent")
+        s_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        s_frame.grid_columnconfigure(1, weight=1)
+
+        # 1. Schedule Enabled switch
+        self.scheduler_enabled_var = tk.BooleanVar(value=False)
+        self.chk_schedule = ctk.CTkCheckBox(
+            s_frame,
+            text=TRANSLATIONS[lang]["lbl_schedule_enable"],
+            variable=self.scheduler_enabled_var,
+            fg_color=THEME_ACCENT_INDIGO,
+            text_color=THEME_TEXT_PRIMARY,
+            command=self._on_schedule_changed
+        )
+        self.chk_schedule.grid(row=0, column=0, columnspan=2, padx=6, pady=8, sticky="w")
+
+        # 2. Schedule Time Label & Input
+        self.lbl_schedule_time = ctk.CTkLabel(s_frame, text=TRANSLATIONS[lang]["lbl_schedule_time"], text_color=THEME_TEXT_PRIMARY)
+        self.lbl_schedule_time.grid(row=1, column=0, sticky="w", padx=6, pady=8)
+        
+        self.schedule_time_var = ctk.StringVar(value="03:00")
+        self.schedule_time_entry = ctk.CTkEntry(
+            s_frame,
+            textvariable=self.schedule_time_var,
+            placeholder_text="03:00",
+            height=30,
+            fg_color=THEME_BG,
+            border_color=THEME_CARD_BORDER,
+            border_width=1,
+            text_color=THEME_TEXT_PRIMARY
+        )
+        self.schedule_time_entry.grid(row=1, column=1, sticky="w", padx=6, pady=8, ipadx=20)
+        self.schedule_time_entry.configure(state="disabled")
+
+        # Description Label
+        self.lbl_schedule_desc = ctk.CTkLabel(
+            s_frame,
+            text=TRANSLATIONS[lang]["lbl_schedule_desc"],
+            text_color=THEME_TEXT_SECONDARY,
+            font=ctk.CTkFont(family="Segoe UI", size=11, slant="italic")
+        )
+        self.lbl_schedule_desc.grid(row=2, column=0, columnspan=2, padx=6, pady=8, sticky="w")
 
 
 
@@ -416,6 +531,40 @@ class AdvancedPanel(ctk.CTkFrame):
         )
         self.btn_delete_preset.grid(row=0, column=3, padx=6, pady=6, sticky="e")
 
+    def _update_folder_org_dropdown(self):
+        lang = self.app_state.current_lang
+        val_map = {
+            "None": TRANSLATIONS[lang]["folder_org_none"],
+            "Channel": TRANSLATIONS[lang]["folder_org_channel"],
+            "Year": TRANSLATIONS[lang]["folder_org_year"],
+            "Format": TRANSLATIONS[lang]["folder_org_format"],
+            "Channel_Year": TRANSLATIONS[lang]["folder_org_channel_year"],
+        }
+        curr_logical = self.get_folder_org_logical()
+        translated_vals = list(val_map.values())
+        self.folder_org_menu.configure(values=translated_vals)
+        t_val = val_map.get(curr_logical, translated_vals[0])
+        self.folder_org_var.set(t_val)
+
+    def get_folder_org_logical(self) -> str:
+        choice = self.folder_org_var.get()
+        # Find choice in TRANSLATIONS across all lang codes to map logically
+        for lang in TRANSLATIONS:
+            val_map = {
+                "None": TRANSLATIONS[lang]["folder_org_none"],
+                "Channel": TRANSLATIONS[lang]["folder_org_channel"],
+                "Year": TRANSLATIONS[lang]["folder_org_year"],
+                "Format": TRANSLATIONS[lang]["folder_org_format"],
+                "Channel_Year": TRANSLATIONS[lang]["folder_org_channel_year"],
+            }
+            inverse_map = {v: k for k, v in val_map.items()}
+            if choice in inverse_map:
+                return inverse_map[choice]
+        return "None"
+
+    def _on_folder_org_menu_changed(self, choice):
+        self.user_explicit = True
+
     def _on_mode_changed(self, choice):
         self.app_state.active_profile = "custom"
         if choice == "Audio":
@@ -450,6 +599,12 @@ class AdvancedPanel(ctk.CTkFrame):
         except Exception:
             pass
 
+    def _on_schedule_changed(self):
+        if self.scheduler_enabled_var.get():
+            self.schedule_time_entry.configure(state="normal")
+        else:
+            self.schedule_time_entry.configure(state="disabled")
+
     def _pick_cookies_file(self):
         chosen = filedialog.askopenfilename(
             filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")]
@@ -470,35 +625,53 @@ class AdvancedPanel(ctk.CTkFrame):
         if name not in presets:
             return
         
-        p = presets[name]
-        
-        # Apply mode
-        mode = p.get("mode", "Video")
-        self.mode_var.set(mode)
-        self._on_mode_changed(mode)
+        self._applying_programmatic = True
+        try:
+            p = presets[name]
+            
+            # Apply mode
+            mode = p.get("mode", "Video")
+            self.mode_var.set(mode)
+            self._on_mode_changed(mode)
 
-        # Audio settings
-        self.audio_format_var.set(p.get("audio_format", "mp3"))
-        self.audio_quality_var.set(p.get("audio_quality", "Dengeli (192K)"))
+            # Audio settings
+            self.audio_format_var.set(p.get("audio_format", "mp3"))
+            self.audio_quality_var.set(p.get("audio_quality", "Dengeli (192K)"))
 
-        # Video settings
-        self.video_profile_var.set(p.get("video_profile", "Full HD (1080p)"))
-        self._on_video_profile_changed(self.video_profile_var.get())
-        self.video_container_var.set(p.get("video_container", "mp4"))
-        self.video_audio_codec_var.set(p.get("video_audio_codec", "AAC"))
+            # Video settings
+            self.video_profile_var.set(p.get("video_profile", "Full HD (1080p)"))
+            self._on_video_profile_changed(self.video_profile_var.get())
+            self.video_container_var.set(p.get("video_container", "mp4"))
+            self.video_audio_codec_var.set(p.get("video_audio_codec", "AAC"))
 
-        # Add-ons
-        self.thumbnail_var.set(p.get("thumbnail_flag", True))
-        self.metadata_var.set(p.get("metadata_flag", True))
-        self.restrict_names_var.set(p.get("restrict_filenames", False))
-        
-        self.concurrent_fragments_var.set(p.get("concurrent_fragments", "3"))
-        self.playlist_items_var.set(p.get("playlist_items", ""))
-        self.max_downloads_var.set(p.get("max_downloads", ""))
-        self.rate_limit_var.set(p.get("rate_limit", ""))
+            # Add-ons
+            self.thumbnail_var.set(p.get("thumbnail_flag", True))
+            self.metadata_var.set(p.get("metadata_flag", True))
+            self.restrict_names_var.set(p.get("restrict_filenames", False))
+            
+            self.concurrent_fragments_var.set(p.get("concurrent_fragments", "3"))
+            self.playlist_items_var.set(p.get("playlist_items", ""))
+            self.max_downloads_var.set(p.get("max_downloads", ""))
+            self.rate_limit_var.set(p.get("rate_limit", ""))
 
-        if self.on_preset_loaded:
-            self.on_preset_loaded()
+            # Smart Folder
+            logical_folder = p.get("folder_org", "None")
+            lang = self.app_state.current_lang
+            val_map = {
+                "None": TRANSLATIONS[lang]["folder_org_none"],
+                "Channel": TRANSLATIONS[lang]["folder_org_channel"],
+                "Year": TRANSLATIONS[lang]["folder_org_year"],
+                "Format": TRANSLATIONS[lang]["folder_org_format"],
+                "Channel_Year": TRANSLATIONS[lang]["folder_org_channel_year"],
+            }
+            t_val = val_map.get(logical_folder, val_map["None"])
+            self.folder_org_var.set(t_val)
+
+            if self.on_preset_loaded:
+                self.on_preset_loaded()
+        finally:
+            self._applying_programmatic = False
+        self.user_explicit = True
 
     def _prompt_save_preset(self):
         dialog = ctk.CTkInputDialog(
@@ -521,7 +694,8 @@ class AdvancedPanel(ctk.CTkFrame):
                 "playlist_items": self.playlist_items_var.get(),
                 "max_downloads": self.max_downloads_var.get(),
                 "rate_limit": self.rate_limit_var.get(),
-                "concurrent_fragments": self.concurrent_fragments_var.get()
+                "concurrent_fragments": self.concurrent_fragments_var.get(),
+                "folder_org": self.get_folder_org_logical()
             }
             save_preset(name, preset_dict)
             self._load_presets_dropdown()
@@ -562,37 +736,64 @@ class AdvancedPanel(ctk.CTkFrame):
             "cookies": self.cookies_var.get(),
             "browser_cookies": self.browser_cookies_var.get(),
             "youtube_403": self.youtube_403_fallback_var.get(),
-            "max_workers": int(self.max_workers_var.get())
+            "max_workers": int(self.max_workers_var.get()),
+            "scheduler_enabled": self.scheduler_enabled_var.get(),
+            "scheduler_time": self.schedule_time_var.get(),
+            "options_source": "User_Explicit" if self.user_explicit else "Default",
+            "folder_org": self.get_folder_org_logical()
         }
 
     def apply_settings_dict(self, d: dict):
-        self.mode_var.set(d.get("mode", "Video"))
-        self._on_mode_changed(self.mode_var.get())
-        self.video_profile_var.set(d.get("video_profile", "Full HD (1080p)"))
-        self._on_video_profile_changed(self.video_profile_var.get())
-        self.custom_video_height_var.set(d.get("video_limit", "1080"))
-        self.video_container_var.set(d.get("video_container", "mp4"))
-        self.audio_format_var.set(d.get("audio_format", "mp3"))
-        self.audio_quality_var.set(d.get("audio_quality", "Dengeli (192K)"))
-        self.video_audio_codec_var.set(d.get("video_audio_codec", "AAC"))
-        self.playlist_var.set(d.get("playlist", True))
-        self.metadata_var.set(d.get("metadata", True))
-        self.thumbnail_var.set(d.get("thumbnail_flag", True))
-        self.subs_var.set(d.get("subs", False))
-        self.auto_subs_var.set(d.get("auto_subs", False))
-        self.restrict_names_var.set(d.get("restrict_names", False))
-        self.sponsorblock_var.set(d.get("sponsorblock", False))
-        self.playlist_items_var.set(d.get("playlist_items", ""))
-        self.max_downloads_var.set(d.get("max_downloads", ""))
-        self.rate_limit_var.set(d.get("rate_limit", ""))
-        self.concurrent_fragments_var.set(d.get("concurrent_fragments", "3"))
-        self.download_archive_var.set(d.get("archive", True))
-        self.retries_var.set(d.get("retries", ""))
-        self.cookies_var.set(d.get("cookies", ""))
-        self.browser_cookies_var.set(d.get("browser_cookies", "Kapali"))
-        self.youtube_403_fallback_var.set(d.get("youtube_403", True))
-        self.max_workers_var.set(str(d.get("max_workers", 3)))
-        self.app_state.preferences.max_workers = int(self.max_workers_var.get())
+        self._applying_programmatic = True
+        try:
+            self.mode_var.set(d.get("mode", "Video"))
+            self._on_mode_changed(self.mode_var.get())
+            self.video_profile_var.set(d.get("video_profile", "Full HD (1080p)"))
+            self._on_video_profile_changed(self.video_profile_var.get())
+            self.custom_video_height_var.set(d.get("video_limit", "1080"))
+            self.video_container_var.set(d.get("video_container", "mp4"))
+            self.audio_format_var.set(d.get("audio_format", "mp3"))
+            self.audio_quality_var.set(d.get("audio_quality", "Dengeli (192K)"))
+            self.video_audio_codec_var.set(d.get("video_audio_codec", "AAC"))
+            self.playlist_var.set(d.get("playlist", True))
+            self.metadata_var.set(d.get("metadata", True))
+            self.thumbnail_var.set(d.get("thumbnail_flag", True))
+            self.subs_var.set(d.get("subs", False))
+            self.auto_subs_var.set(d.get("auto_subs", False))
+            self.restrict_names_var.set(d.get("restrict_names", False))
+            self.sponsorblock_var.set(d.get("sponsorblock", False))
+            self.playlist_items_var.set(d.get("playlist_items", ""))
+            self.max_downloads_var.set(d.get("max_downloads", ""))
+            self.rate_limit_var.set(d.get("rate_limit", ""))
+            self.concurrent_fragments_var.set(d.get("concurrent_fragments", "3"))
+            self.download_archive_var.set(d.get("archive", True))
+            self.retries_var.set(d.get("retries", ""))
+            self.cookies_var.set(d.get("cookies", ""))
+            self.browser_cookies_var.set(d.get("browser_cookies", "Kapali"))
+            self.youtube_403_fallback_var.set(d.get("youtube_403", True))
+            self.max_workers_var.set(str(d.get("max_workers", 3)))
+            self.app_state.preferences.max_workers = int(self.max_workers_var.get())
+            self.scheduler_enabled_var.set(d.get("scheduler_enabled", False))
+            self._on_schedule_changed()
+            self.schedule_time_var.set(d.get("scheduler_time", "03:00"))
+            
+            opt_src = d.get("options_source", "Default")
+            self.user_explicit = (opt_src == "User_Explicit")
+
+            # Smart Folder Restore
+            logical_folder = d.get("folder_org", "None")
+            lang = self.app_state.current_lang
+            val_map = {
+                "None": TRANSLATIONS[lang]["folder_org_none"],
+                "Channel": TRANSLATIONS[lang]["folder_org_channel"],
+                "Year": TRANSLATIONS[lang]["folder_org_year"],
+                "Format": TRANSLATIONS[lang]["folder_org_format"],
+                "Channel_Year": TRANSLATIONS[lang]["folder_org_channel_year"],
+            }
+            t_val = val_map.get(logical_folder, val_map["None"])
+            self.folder_org_var.set(t_val)
+        finally:
+            self._applying_programmatic = False
 
     def refresh_translations(self):
         lang = self.app_state.current_lang
@@ -632,3 +833,7 @@ class AdvancedPanel(ctk.CTkFrame):
         self.lbl_presets.configure(text=TRANSLATIONS[lang]["lbl_preset_action"])
         self.btn_save_preset.configure(text=TRANSLATIONS[lang]["btn_save_preset"])
         self.btn_delete_preset.configure(text=TRANSLATIONS[lang]["btn_delete_preset"])
+
+        # Translate Smart Folder UI
+        self.lbl_folder_org.configure(text=TRANSLATIONS[lang]["lbl_folder_org"])
+        self._update_folder_org_dropdown()

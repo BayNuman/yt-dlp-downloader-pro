@@ -29,7 +29,7 @@ class MainActivity : ComponentActivity() {
             val downloaderViewModel: DownloaderViewModel = viewModel()
             val state by downloaderViewModel.uiState.collectAsStateWithLifecycle()
 
-            YtDownloaderTheme(darkTheme = state.isDarkTheme) {
+            YtDownloaderTheme(themeMode = state.themeMode) {
                 val context = LocalContext.current
 
                 val permissionsLauncher = rememberLauncherForActivityResult(
@@ -133,6 +133,19 @@ private fun extractSharedText(intent: Intent?): String? {
     val rawText = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return null
     // Extract pure HTTP/HTTPS URL from any complex shared description texts
     val regex = Regex("""https?://[\w./\-?=&%+#]+""")
-    val match = regex.find(rawText)
-    return match?.value ?: rawText
+    val match = regex.find(rawText) ?: return null
+    val urlStr = match.value
+    
+    // Parse URL and validate host (whitelist gateway security verification - S2)
+    try {
+        val uri = android.net.Uri.parse(urlStr)
+        val host = uri.host?.lowercase() ?: ""
+        val whitelist = listOf("youtube.com", "youtu.be", "vimeo.com", "tiktok.com", "instagram.com")
+        val isValid = whitelist.any { allowed -> host == allowed || host.endsWith(".$allowed") }
+        if (isValid) {
+            return urlStr
+        }
+    } catch (_: Exception) {}
+    
+    return null
 }

@@ -68,12 +68,16 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
+    implementation("io.coil-kt:coil-compose:2.7.0")
 
     // Database Layer (Room)
     val roomVersion = "2.6.1"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     add("ksp", "androidx.room:room-compiler:$roomVersion")
+
+    // WorkManager (Deferred scheduling)
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
 
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")

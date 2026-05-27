@@ -2,12 +2,24 @@ package com.baynuman.ytdownloader.data
 
 class YtDlpCommandBuilder {
     fun buildPrimaryCommand(request: DownloadRequest): List<String> {
+        val effectiveTemplate = if (request.folderOrg != "None") {
+            when (request.folderOrg) {
+                "Channel" -> "%(uploader).30s/%(title).70s [%(id)s].%(ext)s"
+                "Year" -> "%(upload_date>%Y)s/%(title).70s [%(id)s].%(ext)s"
+                "Format" -> "%(ext)s/%(title).70s [%(id)s].%(ext)s"
+                "Channel_Year" -> "%(uploader).30s/%(upload_date>%Y)s/%(title).70s [%(id)s].%(ext)s"
+                else -> request.outputTemplate.ifBlank { DEFAULT_OUTPUT_TEMPLATE }
+            }
+        } else {
+            request.outputTemplate.ifBlank { DEFAULT_OUTPUT_TEMPLATE }
+        }
+
         val cmd = mutableListOf(
             "--newline",
             "-P",
             request.outputDir,
             "-o",
-            request.outputTemplate.ifBlank { DEFAULT_OUTPUT_TEMPLATE },
+            effectiveTemplate,
         )
 
         if (request.mode == DownloadMode.VIDEO) {
@@ -80,7 +92,7 @@ class YtDlpCommandBuilder {
         if (request.autoSubtitles) {
             cmd += "--write-auto-subs"
         }
-        if (request.restrictNames) {
+        if (request.restrictNames || request.folderOrg != "None") {
             cmd += "--restrict-filenames"
         }
 

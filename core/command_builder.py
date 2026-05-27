@@ -61,10 +61,17 @@ def sanitize_extra_args(extra_args_str: str) -> list[str]:
     except Exception:
         parts = extra_args_str.split()
         
-    blacklist = {
-        "--exec", "--exec-before-download", "--exec-cmd", "-e",
-        "--downloader", "--external-downloader",
-        "--downloader-args", "--external-downloader-args"
+    SAFE_ARG_PREFIXES = [
+        "--sleep-", "--limit-", "--retries", "--socket-timeout", "--proxy",
+        "--referer", "--user-agent", "--geo-", "--playlist-", "--yes-", "--no-",
+        "--date", "--match-", "--reject-", "--min-", "--max-", "--flat-playlist",
+        "--ignore-errors", "--verbose", "--quiet", "--force-", "--cookies",
+        "--ffmpeg-", "--audio-", "--extract-audio", "--embed-", "--add-", "--write-",
+        "--ignore-config", "--no-config", "--prefer-", "--http-", "--buffer-",
+        "--resize-", "--remux-", "--recode-", "--postprocessor-", "--download-sections"
+    ]
+    SAFE_EXACT_ARGS = {
+        "-i", "-v", "-q", "-h", "--help", "--version", "--force-keyframes-at-cuts"
     }
     
     sanitized_parts = []
@@ -76,23 +83,24 @@ def sanitize_extra_args(extra_args_str: str) -> list[str]:
             continue
             
         part_clean = part.strip()
-        part_lower = part_clean.lower()
-        
-        is_blocked = False
-        for blocked_arg in blacklist:
-            if part_lower == blocked_arg:
-                is_blocked = True
-                break
-            if part_lower.startswith(blocked_arg + "="):
-                is_blocked = True
-                break
+        if part_clean.startswith("-"):
+            part_lower = part_clean.lower()
+            is_safe = False
+            for safe_exact in SAFE_EXACT_ARGS:
+                if part_lower == safe_exact:
+                    is_safe = True
+                    break
+            if not is_safe:
+                for safe_prefix in SAFE_ARG_PREFIXES:
+                    if part_lower.startswith(safe_prefix):
+                        is_safe = True
+                        break
+            if not is_safe:
+                print(f"[Security Protection] Blocked dangerous/unlisted parameter: {part}")
+                if "=" not in part_clean and i + 1 < len(parts) and not parts[i + 1].strip().startswith("-"):
+                    skip_next = True
+                continue
                 
-        if is_blocked:
-            print(f"[Security Protection] Blocked dangerous parameter: {part}")
-            if "=" not in part_clean and i + 1 < len(parts):
-                skip_next = True
-            continue
-            
         sanitized_parts.append(part)
         
     return sanitized_parts
@@ -108,7 +116,22 @@ def build_command(item, output_dir: str) -> list[str]:
     import json
     
     out_dir = str(Path(output_dir).expanduser())
-    output_template = str(safe_get(item, "output_template", "")).strip() or DEFAULT_OUTPUT_TEMPLATE
+    folder_org = str(safe_get(item, "folder_org", "None")).strip()
+    
+    if folder_org and folder_org != "None":
+        if folder_org == "Channel":
+            output_template = "%(uploader).30s/%(title).70s [%(id)s].%(ext)s"
+        elif folder_org == "Year":
+            output_template = "%(upload_date>%Y)s/%(title).70s [%(id)s].%(ext)s"
+        elif folder_org == "Format":
+            output_template = "%(ext)s/%(title).70s [%(id)s].%(ext)s"
+        elif folder_org == "Channel_Year":
+            output_template = "%(uploader).30s/%(upload_date>%Y)s/%(title).70s [%(id)s].%(ext)s"
+        else:
+            output_template = DEFAULT_OUTPUT_TEMPLATE
+    else:
+        output_template = str(safe_get(item, "output_template", "")).strip() or DEFAULT_OUTPUT_TEMPLATE
+        
     cmd: list[str] = [sys.executable, "-m", "yt_dlp", "--newline", "-P", out_dir, "-o", output_template]
 
     # If pre-fetched metadata exists (Multi-Clip Single-Fetch), inject it to avoid double-fetching network calls
@@ -166,7 +189,7 @@ def build_command(item, output_dir: str) -> list[str]:
         cmd.extend(["--write-subs", "--sub-langs", "all,-live_chat"])
     if safe_get(item, "auto_subs"):
         cmd.append("--write-auto-subs")
-    if safe_get(item, "restrict_names"):
+    if safe_get(item, "restrict_names") or (folder_org and folder_org != "None"):
         cmd.append("--restrict-filenames")
 
     if safe_get(item, "sponsorblock"):

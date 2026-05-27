@@ -19,4 +19,10 @@ interface DownloadRecordDao {
 
     @Query("DELETE FROM download_history")
     fun clearAll()
+
+    @Query("SELECT * FROM download_history WHERE (url = :url OR url LIKE :urlLike) AND format = :format LIMIT 1")
+    fun findRecordByUrlAndFormat(url: String, urlLike: String, format: String): DownloadRecordEntity?
+
+    @Query("UPDATE download_history SET thumbnail_path = :thumbnailPath WHERE id = :id")
+    fun updateThumbnailPath(id: String, thumbnailPath: String): Int
 }

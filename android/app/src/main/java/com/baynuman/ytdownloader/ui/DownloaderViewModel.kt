@@ -25,6 +25,7 @@ import com.baynuman.ytdownloader.data.UrlPreviewResolver
 import com.baynuman.ytdownloader.data.YtDlpRunner
 import com.baynuman.ytdownloader.data.db.DownloadDatabase
 import com.baynuman.ytdownloader.data.db.DownloadRecordEntity
+import com.baynuman.ytdownloader.data.db.ChannelRuleEntity
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
@@ -38,8 +39,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import java.security.MessageDigest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 import android.os.Build
 
@@ -105,19 +114,29 @@ data class DownloaderUiState(
     // Modernized UI properties
     val currentLanguage: String = "en",
     val isDarkTheme: Boolean = true,
+    val themeMode: String = "DARK",
     val isBatchMode: Boolean = false,
     val clipTextDetected: String = "",
     val activeTab: Int = 0,
     val historyRecords: List<DownloadRecord> = emptyList(),
     val clipEnabled: Boolean = false,
     val clipStart: String = "00:00",
-    val clipEnd: String = "00:00"
+    val clipEnd: String = "00:00",
+    val wifiOnly: Boolean = false,
+    val schedulerEnabled: Boolean = false,
+    val schedulerTime: String = "03:00",
+    val showDuplicateDialog: Boolean = false,
+    val duplicateTaskRequest: DownloadRequest? = null,
+    val folderOrg: String = "None",
+    val clipPrecise: Boolean = false,
+    val compactMode: Boolean = false
 )
 
 data class RuntimeState(
     val historyRecords: List<DownloadRecord> = emptyList(),
     val activeTab: Int = 0,
     val isDarkTheme: Boolean = true,
+    val themeMode: String = "DARK",
     val currentLanguage: String = "en",
     val binaryStatus: String = "yt-dlp otomatik hazirlaniyor...",
     val detectedAbi: String = "",
@@ -126,6 +145,8 @@ data class RuntimeState(
     val mediaPermissionsGranted: Boolean = false,
     val showDiagnostics: Boolean = false,
     val showFullOutputPath: Boolean = false,
+    val showDuplicateDialog: Boolean = false,
+    val duplicateTaskRequest: DownloadRequest? = null,
 )
 
 class DownloaderViewModel(application: Application) : AndroidViewModel(application) {
@@ -135,10 +156,16 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
     private val binaryInstaller = BinaryInstaller(appContext)
     private val previewResolver = UrlPreviewResolver(appContext)
     private var previewJob: Job? = null
+    private var latestThumbnailPath: String? = null
 
     // Room database Single Source of Truth for History
     private val database = DownloadDatabase.getDatabase(appContext)
     private val recordDao = database.downloadRecordDao()
+    private val channelRuleDao = database.channelRuleDao()
+    private var previewChannelId: String? = null
+    private val queueMutex = Mutex()
+    private val logBuffer = java.util.ArrayDeque<String>(300)
+    private val logMutex = Mutex()
 
     // 1. Atomic Domain States Flow Decompositions
     private val _preferencesState = MutableStateFlow(buildInitialPreferencesState(application))
@@ -154,6 +181,7 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
     private val _runtimeState = MutableStateFlow(
         RuntimeState(
             isDarkTheme = prefs.getBoolean("is_dark_theme", true),
+            themeMode = prefs.getString("theme_mode", null) ?: if (prefs.getBoolean("is_dark_theme", true)) "DARK" else "LIGHT",
             currentLanguage = prefs.getString("current_language", null)
                 ?: java.util.Locale.getDefault().language.takeIf { it in listOf("tr", "es") }
                 ?: "en"
@@ -218,13 +246,22 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
             errorText = validation.errorText,
             currentLanguage = runtime.currentLanguage,
             isDarkTheme = runtime.isDarkTheme,
+            themeMode = runtime.themeMode,
             isBatchMode = prefs.isBatchMode,
             clipTextDetected = validation.clipTextDetected,
             activeTab = runtime.activeTab,
             historyRecords = runtime.historyRecords,
             clipEnabled = prefs.clipEnabled,
             clipStart = prefs.clipStart,
-            clipEnd = prefs.clipEnd
+            clipEnd = prefs.clipEnd,
+            wifiOnly = prefs.wifiOnly,
+            schedulerEnabled = prefs.schedulerEnabled,
+            schedulerTime = prefs.schedulerTime,
+            showDuplicateDialog = runtime.showDuplicateDialog,
+            duplicateTaskRequest = runtime.duplicateTaskRequest,
+            folderOrg = prefs.folderOrg,
+            clipPrecise = prefs.clipPrecise,
+            compactMode = prefs.compactMode
         )
     }.stateIn(
         scope = viewModelScope,
@@ -245,14 +282,14 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
 
         // Listen to DownloadService's isRunning state
         viewModelScope.launch {
-            com.baynuman.ytdownloader.service.DownloadService.isRunning.collect { isServiceRunning ->
+            com.baynuman.ytdownloader.data.DownloadRepository.isRunning.collect { isServiceRunning ->
                 _activeTaskState.update { it.copy(isRunning = isServiceRunning) }
             }
         }
 
         // Listen to DownloadService's events
         viewModelScope.launch {
-            com.baynuman.ytdownloader.service.DownloadService.downloadEvents.collect { event ->
+            com.baynuman.ytdownloader.data.DownloadRepository.downloadEvents.collect { event ->
                 when (event) {
                     is DownloadEvent.LogLine -> handleLogLine(event.text)
                     is DownloadEvent.Progress -> {
@@ -261,6 +298,7 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
                     }
                     is DownloadEvent.Status -> _activeTaskState.update { it.copy(status = event.text) }
                     is DownloadEvent.Finished -> {
+                        resetSpeedHistory()
                         _activeTaskState.update {
                             it.copy(
                                 isRunning = false,
@@ -270,18 +308,21 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
                             )
                         }
                         if (event.success) {
-                            val activeRequest = com.baynuman.ytdownloader.service.DownloadService.activeRequest
+                            val activeRequest = com.baynuman.ytdownloader.data.DownloadRepository.activeRequest
                             val currentUrl = lastStartedUrl.ifBlank { activeRequest?.urls?.firstOrNull() ?: "" }
                             val finalTitle = if (_formValidationState.value.previewTitle.isNotBlank()) {
                                 _formValidationState.value.previewTitle
                             } else {
                                 currentUrl
                             }
+                            val taskId = activeRequest?.taskId ?: java.util.UUID.randomUUID().toString()
                             addToHistory(
                                 title = finalTitle,
                                 url = currentUrl,
                                 format = if (_preferencesState.value.mode == DownloadMode.VIDEO) _preferencesState.value.videoContainer else _preferencesState.value.audioFormat,
-                                sizeBytes = event.sizeBytes
+                                sizeBytes = event.sizeBytes,
+                                thumbnailPath = activeRequest?.thumbnailPath ?: latestThumbnailPath,
+                                id = taskId
                             )
                             telemetry("download_completed")
                         } else {
@@ -305,7 +346,9 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun buildInitialPreferencesState(application: Application): DownloadPreferencesState {
         return DownloadPreferencesState(
-            outputDir = defaultOutputDir(application)
+            outputDir = defaultOutputDir(application),
+            clipPrecise = prefs.getBoolean("clip_precise", false),
+            compactMode = prefs.getBoolean("compact_mode", false)
         )
     }
 
@@ -314,10 +357,12 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
             ?: java.util.Locale.getDefault().language.takeIf { it in listOf("tr", "es") }
             ?: "en"
         val savedTheme = prefs.getBoolean("is_dark_theme", true)
+        val savedThemeMode = prefs.getString("theme_mode", null) ?: if (savedTheme) "DARK" else "LIGHT"
         return DownloaderUiState(
             outputDir = defaultOutputDir(application),
             currentLanguage = savedLang,
-            isDarkTheme = savedTheme
+            isDarkTheme = savedTheme,
+            themeMode = savedThemeMode
         )
     }
 
@@ -360,10 +405,18 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun toggleTheme() {
-        val next = !_runtimeState.value.isDarkTheme
-        _runtimeState.update { it.copy(isDarkTheme = next) }
-        prefs.edit().putBoolean("is_dark_theme", next).apply()
-        telemetry("theme_changed_${if (next) "dark" else "light"}")
+        val current = _runtimeState.value.themeMode
+        val next = when (current) {
+            "LIGHT" -> "DARK"
+            "DARK" -> "AMOLED"
+            else -> "LIGHT"
+        }
+        _runtimeState.update { it.copy(
+            themeMode = next,
+            isDarkTheme = (next == "DARK" || next == "AMOLED")
+        ) }
+        prefs.edit().putString("theme_mode", next).apply()
+        telemetry("theme_changed_$next")
     }
 
     fun toggleBatchMode() {
@@ -371,11 +424,62 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
         telemetry("batch_mode_changed_${_preferencesState.value.isBatchMode}")
     }
 
+    fun toggleCompactMode() {
+        val next = !_preferencesState.value.compactMode
+        _preferencesState.update { it.copy(compactMode = next) }
+        prefs.edit().putBoolean("compact_mode", next).apply()
+        telemetry("toggle_compact_mode_$next")
+    }
+
+    fun toggleClipPrecise() {
+        val next = !_preferencesState.value.clipPrecise
+        _preferencesState.update { it.copy(clipPrecise = next) }
+        prefs.edit().putBoolean("clip_precise", next).apply()
+        telemetry("toggle_clip_precise_$next")
+    }
+
+    fun addToQueueWithoutStarting() {
+        val currentInput = _formValidationState.value.urlsText.trim()
+        if (currentInput.isBlank()) return
+        
+        if (!_preferencesState.value.isBatchMode) {
+            _preferencesState.update { it.copy(isBatchMode = true) }
+        }
+        
+        val nextText = if (currentInput.endsWith("\n")) {
+            currentInput
+        } else {
+            currentInput + "\n"
+        }
+        updateUrlsText(nextText)
+        telemetry("add_to_queue_without_starting")
+    }
+
     fun removeUrlFromBatch(index: Int) {
         val urls = parseUrls(_formValidationState.value.urlsText)
         if (index in urls.indices) {
             val updatedUrls = urls.toMutableList().apply { removeAt(index) }
             val nextText = updatedUrls.joinToString("\n")
+            updateUrlsText(nextText)
+        }
+    }
+
+    fun reorderBatchUrls(fromIndex: Int, toIndex: Int) {
+        val urls = parseUrls(_formValidationState.value.urlsText).toMutableList()
+        val activeIndex = _activeTaskState.value.playlistProgressText.substringBefore("/").toIntOrNull()?.let { it - 1 } ?: 0
+        val isDownloading = _activeTaskState.value.isRunning
+        
+        // Pinned Active Item: Lock currently active or completed tasks
+        if (isDownloading) {
+            if (fromIndex <= activeIndex || toIndex <= activeIndex) {
+                return
+            }
+        }
+        
+        if (fromIndex in urls.indices && toIndex in urls.indices) {
+            val item = urls.removeAt(fromIndex)
+            urls.add(toIndex, item)
+            val nextText = urls.joinToString("\n")
             updateUrlsText(nextText)
         }
     }
@@ -420,6 +524,7 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
 
     fun updateUrlsText(value: String) {
         _formValidationState.update { it.copy(urlsText = value, errorText = null) }
+        _preferencesState.update { it.copy(userExplicit = false) }
         schedulePreview(value)
     }
 
@@ -463,13 +568,13 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun updateMode(value: DownloadMode) = _preferencesState.update { it.copy(mode = value) }
-    fun updateVideoPreset(value: String) = _preferencesState.update { it.copy(videoPreset = value) }
+    fun updateMode(value: DownloadMode) { _preferencesState.update { it.copy(mode = value, userExplicit = true) } }
+    fun updateVideoPreset(value: String) { _preferencesState.update { it.copy(videoPreset = value, userExplicit = true) } }
     fun updateCustomVideoHeight(value: String) = _preferencesState.update { it.copy(customVideoHeight = value) }
-    fun updateVideoContainer(value: String) = _preferencesState.update { it.copy(videoContainer = value) }
-    fun updateVideoAudioCodec(value: String) = _preferencesState.update { it.copy(videoAudioCodec = value) }
-    fun updateAudioFormat(value: String) = _preferencesState.update { it.copy(audioFormat = value) }
-    fun updateAudioQualityPreset(value: String) = _preferencesState.update { it.copy(audioQualityPreset = value) }
+    fun updateVideoContainer(value: String) { _preferencesState.update { it.copy(videoContainer = value, userExplicit = true) } }
+    fun updateVideoAudioCodec(value: String) { _preferencesState.update { it.copy(videoAudioCodec = value, userExplicit = true) } }
+    fun updateAudioFormat(value: String) { _preferencesState.update { it.copy(audioFormat = value, userExplicit = true) } }
+    fun updateAudioQualityPreset(value: String) { _preferencesState.update { it.copy(audioQualityPreset = value, userExplicit = true) } }
     fun updatePlaylistEnabled(value: Boolean) = _preferencesState.update { it.copy(playlistEnabled = value) }
     fun updateMetadata(value: Boolean) = _preferencesState.update { it.copy(metadata = value) }
     fun updateThumbnail(value: Boolean) = _preferencesState.update { it.copy(thumbnail = value) }
@@ -490,9 +595,14 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
     fun updateExtraArgs(value: String) = _preferencesState.update { it.copy(extraArgs = value) }
     fun updateYoutube403Fallback(value: Boolean) = _preferencesState.update { it.copy(youtube403Fallback = value) }
     fun updateOutputTemplate(value: String) = _preferencesState.update { it.copy(outputTemplate = value) }
+    fun updateFolderOrg(value: String) = _preferencesState.update { it.copy(folderOrg = value, userExplicit = true) }
     fun updateClipEnabled(value: Boolean) = _preferencesState.update { it.copy(clipEnabled = value) }
     fun updateClipStart(value: String) = _preferencesState.update { it.copy(clipStart = value) }
     fun updateClipEnd(value: String) = _preferencesState.update { it.copy(clipEnd = value) }
+    fun updateWifiOnly(value: Boolean) = _preferencesState.update { it.copy(wifiOnly = value) }
+    fun updateSchedulerEnabled(value: Boolean) = _preferencesState.update { it.copy(schedulerEnabled = value) }
+    fun updateSchedulerTime(value: String) = _preferencesState.update { it.copy(schedulerTime = value) }
+    fun dismissDuplicateDialog() = _runtimeState.update { it.copy(showDuplicateDialog = false, duplicateTaskRequest = null) }
     
     fun updateMediaPermissionsStatus(value: Boolean) {
         val previous = _runtimeState.value.mediaPermissionsGranted
@@ -626,10 +736,24 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
         _activeTaskState.update { it.copy(status = "Duraklatiliyor...") }
     }
 
+    private fun extractVideoId(url: String): String? {
+        val regexes = listOf(
+            Regex("""(?:v=|\/v\/|embed\/|shorts\/|youtu\.be\/|\/embed\/|\/shorts\/)([a-zA-Z0-9_-]{11})"""),
+            Regex("""(?:\/shorts\/|youtu\.be\/|v\/|embed\/)([a-zA-Z0-9_-]{11})""")
+        )
+        for (regex in regexes) {
+            val match = regex.find(url)
+            if (match != null && match.groupValues.size > 1) {
+                return match.groupValues[1]
+            }
+        }
+        return null
+    }
+
     fun startDownload() {
+        if (_activeTaskState.value.isRunning) return
         val prefs = _preferencesState.value
         val validation = _formValidationState.value
-        if (_activeTaskState.value.isRunning) return
 
         val validationError = validate(prefs, validation)
         if (validationError != null) {
@@ -687,8 +811,164 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
             extraArgs = prefs.extraArgs,
             youtube403Fallback = prefs.youtube403Fallback,
             archiveFile = File(getApplication<Application>().filesDir, "download_archive.txt").absolutePath,
-            clips = clipsList
+            clips = clipsList,
+            wifiOnly = prefs.wifiOnly,
+            schedulerEnabled = prefs.schedulerEnabled,
+            schedulerTime = prefs.schedulerTime,
+            folderOrg = prefs.folderOrg,
+            clipPrecise = prefs.clipPrecise
         )
+
+        viewModelScope.launch {
+            queueMutex.withLock {
+                val firstUrl = urls.firstOrNull() ?: ""
+                val videoId = extractVideoId(firstUrl) ?: ""
+                val format = if (prefs.mode == DownloadMode.AUDIO) prefs.audioFormat else prefs.videoContainer
+
+                // Tier A Check: RAM / Active tasks
+                val isAlreadyRunning = _activeTaskState.value.isRunning && 
+                    (lastStartedUrl == firstUrl || com.baynuman.ytdownloader.data.DownloadRepository.activeRequest?.urls?.contains(firstUrl) == true)
+
+                // Tier B Check: Room DB
+                val record = if (firstUrl.isNotBlank()) {
+                    withContext(Dispatchers.IO) {
+                        recordDao.findRecordByUrlAndFormat(
+                            url = firstUrl,
+                            urlLike = if (videoId.isNotBlank()) "%$videoId%" else "NOT_FOUND",
+                            format = format
+                        )
+                    }
+                } else null
+
+                // Tier C Check: Physical presence (O(1))
+                var fileExists = false
+                if (record != null) {
+                    val possiblePaths = listOf(
+                        File(prefs.outputDir, "${record.title}.$format"),
+                        File(prefs.outputDir, "${record.title} [$videoId].$format"),
+                        File(prefs.outputDir, "${record.title}-$videoId.$format")
+                    )
+                    for (path in possiblePaths) {
+                        if (path.exists()) {
+                            fileExists = true
+                            break
+                        }
+                    }
+                }
+
+                if (isAlreadyRunning || (record != null && fileExists)) {
+                    // Duplicate found! Open warning popup
+                    _runtimeState.update {
+                        it.copy(
+                            showDuplicateDialog = true,
+                            duplicateTaskRequest = request
+                        )
+                    }
+                    telemetry("duplicate_detected")
+                } else {
+                    // Start download
+                    // Headless Channel Rule Engine
+                    var finalRequest = request
+                    if (!prefs.userExplicit && previewChannelId != null) {
+                        val rule = withContext(Dispatchers.IO) {
+                            channelRuleDao.getRuleByChannelId(previewChannelId!!)
+                        }
+                        if (rule != null) {
+                            try {
+                                val ruleJson = org.json.JSONObject(rule.settingsJson)
+                                finalRequest = request.copy(
+                                    mode = ruleJson.optString("mode", request.mode.name).let {
+                                        try { DownloadMode.valueOf(it) } catch (_: Exception) { request.mode }
+                                    },
+                                    videoPreset = ruleJson.optString("videoPreset", request.videoPreset),
+                                    customVideoHeight = ruleJson.optString("customVideoHeight", request.customVideoHeight),
+                                    videoContainer = ruleJson.optString("videoContainer", request.videoContainer),
+                                    videoAudioCodec = ruleJson.optString("videoAudioCodec", request.videoAudioCodec),
+                                    audioFormat = ruleJson.optString("audioFormat", request.audioFormat),
+                                    audioQualityPreset = ruleJson.optString("audioQualityPreset", request.audioQualityPreset),
+                                    metadata = ruleJson.optString("metadata", request.metadata.toString()).toBoolean(),
+                                    thumbnail = ruleJson.optString("thumbnail", request.thumbnail.toString()).toBoolean(),
+                                    subtitles = ruleJson.optString("subtitles", request.subtitles.toString()).toBoolean(),
+                                    autoSubtitles = ruleJson.optString("autoSubtitles", request.autoSubtitles.toString()).toBoolean(),
+                                    restrictNames = ruleJson.optString("restrictNames", request.restrictNames.toString()).toBoolean(),
+                                    playlistEnabled = ruleJson.optString("playlistEnabled", request.playlistEnabled.toString()).toBoolean()
+                                )
+                                appendLog("[kanal-kurali] Uygulandı: ${rule.channelName} (${rule.channelId})\n")
+                            } catch (e: Exception) {
+                                Log.w("ChannelRules", "Failed to apply rule", e)
+                            }
+                        }
+                    }
+                    startDownloadActual(finalRequest)
+                }
+            }
+        }
+    }
+
+    fun startDownloadActual(request: DownloadRequest) {
+        _runtimeState.update { it.copy(showDuplicateDialog = false, duplicateTaskRequest = null) }
+
+        if (request.schedulerEnabled) {
+            // Cancel previous WorkManager job with the same ID
+            androidx.work.WorkManager.getInstance(appContext).cancelUniqueWork("deferred_ytdlp_download")
+            
+            val timeParts = request.schedulerTime.split(":")
+            val hour = timeParts.getOrNull(0)?.toIntOrNull() ?: 3
+            val minute = timeParts.getOrNull(1)?.toIntOrNull() ?: 0
+            
+            val calendar = java.util.Calendar.getInstance()
+            val now = calendar.timeInMillis
+            
+            val target = java.util.Calendar.getInstance().apply {
+                set(java.util.Calendar.HOUR_OF_DAY, hour)
+                set(java.util.Calendar.MINUTE, minute)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+            if (target.timeInMillis <= now) {
+                target.add(java.util.Calendar.DAY_OF_YEAR, 1)
+            }
+            val delayMs = target.timeInMillis - now
+            
+            val constraints = androidx.work.Constraints.Builder().apply {
+                if (request.wifiOnly) {
+                    setRequiredNetworkType(androidx.work.NetworkType.UNMETERED)
+                } else {
+                    setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+                }
+            }.build()
+
+            val inputData = androidx.work.Data.Builder()
+                .putString("request_json", request.toJsonString())
+                .putString("title", if (request.urls.isNotEmpty()) request.urls.first() else "Scheduled Download")
+                .build()
+
+            val workRequest = androidx.work.OneTimeWorkRequestBuilder<com.baynuman.ytdownloader.service.DownloadWorker>()
+                .setInitialDelay(delayMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .setConstraints(constraints)
+                .setInputData(inputData)
+                .build()
+
+            androidx.work.WorkManager.getInstance(appContext).enqueueUniqueWork(
+                "deferred_ytdlp_download",
+                androidx.work.ExistingWorkPolicy.REPLACE,
+                workRequest
+            )
+
+            appendLog("[bilgi] İndirme zamanlandı: ${request.schedulerTime} (Gecikme: ${delayMs / 1000 / 60} dakika)\n")
+            _activeTaskState.update { it.copy(status = "Zamanlandi: ${request.schedulerTime}") }
+            telemetry("download_scheduled")
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.Default) {
+            logMutex.lock()
+            try {
+                logBuffer.clear()
+            } finally {
+                logMutex.unlock()
+            }
+        }
 
         _activeTaskState.update {
             it.copy(
@@ -703,8 +983,8 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
         _formValidationState.update { it.copy(errorText = null) }
         telemetry("start_download")
 
-        val firstUrl = extractFirstUrl(validation.urlsText) ?: ""
-        val activeTitle = if (validation.previewTitle.isNotBlank()) validation.previewTitle else firstUrl
+        val firstUrl = request.urls.firstOrNull() ?: ""
+        val activeTitle = if (_formValidationState.value.previewTitle.isNotBlank()) _formValidationState.value.previewTitle else firstUrl
         
         lastStartedUrl = firstUrl
 
@@ -714,7 +994,11 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
                 putExtra(com.baynuman.ytdownloader.service.DownloadService.EXTRA_TITLE, activeTitle)
                 putExtra(com.baynuman.ytdownloader.service.DownloadService.EXTRA_REQUEST_JSON, request.toJsonString())
             }
-            appContext.startService(intent)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                appContext.startForegroundService(intent)
+            } else {
+                appContext.startService(intent)
+            }
         } catch (e: Exception) {
             _activeTaskState.update {
                 it.copy(
@@ -787,6 +1071,57 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    private fun downloadAndCompressThumbnail(urlString: String): String? {
+        try {
+            val secureUrlString = if (urlString.startsWith("http://", ignoreCase = true)) {
+                "https://" + urlString.substring(7)
+            } else {
+                urlString
+            }
+            val url = URL(secureUrlString)
+            val connection = url.openConnection() as HttpURLConnection
+            connection.doInput = true
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+            connection.connect()
+            val input = connection.inputStream
+            val bitmap = BitmapFactory.decodeStream(input) ?: return null
+            
+            // Resize to 320x180 px (16:9 ratio)
+            val resizedBitmap = Bitmap.createScaledBitmap(bitmap, 320, 180, true)
+            
+            // Ensure thumbnails folder exists
+            val thumbsDir = File(appContext.filesDir, "thumbnails")
+            if (!thumbsDir.exists()) {
+                thumbsDir.mkdirs()
+            }
+            
+            // Create filename based on md5 of the thumbnail URL
+            val hash = MessageDigest.getInstance("MD5").digest(urlString.toByteArray()).joinToString("") { "%02x".format(it) }
+            val outputFile = File(thumbsDir, "thumb_$hash.webp")
+            
+            FileOutputStream(outputFile).use { out ->
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    resizedBitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, 75, out)
+                } else {
+                    @Suppress("DEPRECATION")
+                    resizedBitmap.compress(Bitmap.CompressFormat.WEBP, 75, out)
+                }
+            }
+            
+            // Clean up bitmaps
+            if (bitmap != resizedBitmap) {
+                bitmap.recycle()
+            }
+            resizedBitmap.recycle()
+            
+            return outputFile.absolutePath
+        } catch (e: Exception) {
+            android.util.Log.e("DownloaderViewModel", "Thumbnail download/compress failed: ${e.message}", e)
+        }
+        return null
+    }
+
     private fun applyPreview(preview: UrlPreview) {
         val status = if (preview.isPlaylist) {
             val countText = preview.itemCount?.let { " - $it oge" }.orEmpty()
@@ -803,7 +1138,84 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
                 previewItemCount = preview.itemCount
             )
         }
+
+        // Asynchronously download and compress thumbnail in background coroutine!
+        val thumbUrl = preview.thumbnailUrl
+        if (!thumbUrl.isNullOrBlank()) {
+            viewModelScope.launch(Dispatchers.IO) {
+                latestThumbnailPath = downloadAndCompressThumbnail(thumbUrl)
+            }
+        } else {
+            latestThumbnailPath = null
+        }
+
+        // Fetch SponsorBlock segments asynchronously (SponsorBlock)
+        val firstUrl = extractFirstUrl(_formValidationState.value.urlsText)
+        if (firstUrl != null && !preview.isPlaylist) {
+            val videoId = extractYoutubeVideoId(firstUrl)
+            if (videoId != null) {
+                viewModelScope.launch(Dispatchers.IO) {
+                    val segments = fetchSponsorBlockSegments(videoId)
+                    _formValidationState.update { it.copy(sponsorSegments = segments) }
+                    if (segments.isNotEmpty()) {
+                        appendLog("[sponsorblock] ${segments.size} sponsor segmenti algilandi!\n")
+                    }
+                }
+            } else {
+                _formValidationState.update { it.copy(sponsorSegments = emptyList()) }
+            }
+        } else {
+            _formValidationState.update { it.copy(sponsorSegments = emptyList()) }
+        }
+
+        // Cache previewChannelId for headless channel rule engine
+        previewChannelId = preview.channelId
+
         telemetry("url_preview_resolved")
+    }
+
+    private fun extractYoutubeVideoId(url: String): String? {
+        val patterns = listOf(
+            Regex("(?:youtube\\.com/(?:[^/]+/.+/|(?:v|e(?:mbed)?)|watch|shorts)\\?v=|youtu\\.be/|youtube\\.com/embed/|youtube\\.com/v/|youtube\\.com/shorts/)([^\"&?/ ]{11})"),
+            Regex("(?<=embed/|v/|watch\\?v=|ytscreeningroom\\?v=|fe\\/videos\\/|youtu\\.be\\/|shorts\\/|user\\/\\S+\\/\\S+\\/)([a-zA-Z0-9_-]{11})")
+        )
+        for (pattern in patterns) {
+            val match = pattern.find(url)
+            if (match != null) {
+                return match.groupValues[1]
+            }
+        }
+        return null
+    }
+
+    private fun fetchSponsorBlockSegments(videoId: String): List<com.baynuman.ytdownloader.data.SponsorSegment> {
+        val segments = mutableListOf<com.baynuman.ytdownloader.data.SponsorSegment>()
+        try {
+            val url = URL("https://sponsor.ajay.app/api/skipSegments?videoID=$videoId")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 3000
+            connection.readTimeout = 3000
+            
+            val responseCode = connection.responseCode
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                val array = org.json.JSONArray(response)
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    val segmentArr = obj.getJSONArray("segment")
+                    val start = segmentArr.getDouble(0).toFloat()
+                    val end = segmentArr.getDouble(1).toFloat()
+                    val category = obj.optString("category", "sponsor")
+                    segments.add(com.baynuman.ytdownloader.data.SponsorSegment(start = start, end = end, category = category))
+                }
+            } else {
+                Log.d("DownloaderViewModel", "SponsorBlock API returned response code: $responseCode")
+            }
+        } catch (e: Exception) {
+            Log.e("DownloaderViewModel", "Failed to fetch SponsorBlock segments", e)
+        }
+        return segments
     }
 
     private fun mapPreviewError(msg: String?): String {
@@ -986,6 +1398,10 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
             telemetry("error_storage_write_denied")
         }
 
+        if (speed != null) {
+            pushSpeedHistory(speed)
+        }
+
         if (speed != null || eta != null || playlistProgress != null) {
             _activeTaskState.update {
                 it.copy(
@@ -1002,16 +1418,17 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
         telemetry("tab_swapped_$index")
     }
 
-    fun addToHistory(title: String, url: String, format: String, sizeBytes: Long) {
+    fun addToHistory(title: String, url: String, format: String, sizeBytes: Long, thumbnailPath: String? = null, id: String? = null) {
         viewModelScope.launch(Dispatchers.IO) {
-            val id = java.util.UUID.randomUUID().toString()
+            val recordId = id ?: java.util.UUID.randomUUID().toString()
             val entity = DownloadRecordEntity(
-                id = id,
+                id = recordId,
                 title = title,
                 url = url,
                 format = format,
                 downloadedAt = System.currentTimeMillis(),
-                fileSizeBytes = sizeBytes
+                fileSizeBytes = sizeBytes,
+                thumbnailPath = thumbnailPath
             )
             recordDao.insertRecord(entity)
         }
@@ -1020,20 +1437,133 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
     fun clearHistory() {
         viewModelScope.launch(Dispatchers.IO) {
             recordDao.clearAll()
+            val thumbsDir = File(appContext.filesDir, "thumbnails")
+            if (thumbsDir.exists()) {
+                thumbsDir.deleteRecursively()
+            }
         }
         telemetry("history_cleared")
     }
 
-    private fun appendLog(line: String) {
-        _activeTaskState.update { current ->
-            val combined = current.logs + line
-            val lines = combined.lineSequence().toList()
-            val next = if (lines.size > 300) {
-                lines.takeLast(300).joinToString("\n") + "\n"
-            } else {
-                combined
+    fun saveChannelRule(channelId: String, channelName: String) {
+        val prefs = _preferencesState.value
+        val settingsMap = mapOf(
+            "mode" to prefs.mode.name,
+            "videoPreset" to prefs.videoPreset,
+            "customVideoHeight" to prefs.customVideoHeight,
+            "videoContainer" to prefs.videoContainer,
+            "videoAudioCodec" to prefs.videoAudioCodec,
+            "audioFormat" to prefs.audioFormat,
+            "audioQualityPreset" to prefs.audioQualityPreset,
+            "metadata" to prefs.metadata.toString(),
+            "thumbnail" to prefs.thumbnail.toString(),
+            "subtitles" to prefs.subtitles.toString(),
+            "autoSubtitles" to prefs.autoSubtitles.toString(),
+            "restrictNames" to prefs.restrictNames.toString(),
+            "playlistEnabled" to prefs.playlistEnabled.toString()
+        )
+        val settingsJson = org.json.JSONObject(settingsMap).toString()
+        viewModelScope.launch(Dispatchers.IO) {
+            channelRuleDao.insertOrUpdate(
+                ChannelRuleEntity(
+                    channelId = channelId,
+                    channelName = channelName,
+                    settingsJson = settingsJson,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+        }
+        appendLog("[kanal-kurali] Kural kaydedildi: $channelName ($channelId)\n")
+        telemetry("channel_rule_saved")
+    }
+
+    fun deleteChannelRule(channelId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            channelRuleDao.deleteByChannelId(channelId)
+        }
+        telemetry("channel_rule_deleted")
+    }
+
+    fun hasChannelRule(): Boolean {
+        return previewChannelId != null
+    }
+
+    fun getPreviewChannelId(): String? = previewChannelId
+    fun getPreviewChannelName(): String = _formValidationState.value.previewChannel
+
+    private fun pushSpeedHistory(rawSpeedStr: String) {
+        val rawMbps = parseSpeedToMbps(rawSpeedStr)
+        val currentEma = _activeTaskState.value.emaSmoothed
+        val smoothed = (rawMbps * 0.2f) + (currentEma * 0.8f)
+        val history = _activeTaskState.value.speedHistory.toMutableList()
+        val idx = _activeTaskState.value.speedWriteIdx
+        history[idx] = smoothed
+        _activeTaskState.update {
+            it.copy(
+                speedHistory = history,
+                speedWriteIdx = (idx + 1) % 60,
+                emaSmoothed = smoothed
+            )
+        }
+    }
+
+    private fun parseSpeedToMbps(s: String): Float {
+        val cleaned = s.trim().lowercase()
+        val regex = Regex("""([0-9.]+)\s*(gib|mib|kib|gb|mb|kb|b)/s""")
+        val match = regex.find(cleaned) ?: return 0f
+        val value = match.groupValues[1].toFloatOrNull() ?: return 0f
+        val unit = match.groupValues[2]
+        return when (unit) {
+            "gib", "gb" -> value * 1024f
+            "mib", "mb" -> value
+            "kib", "kb" -> value / 1024f
+            "b" -> value / (1024f * 1024f)
+            else -> value
+        }
+    }
+
+    fun resetSpeedHistory() {
+        _activeTaskState.update {
+            it.copy(
+                speedHistory = List(60) { 0f },
+                speedWriteIdx = 0,
+                emaSmoothed = 0f
+            )
+        }
+    }
+
+    fun deleteHistoryRecord(id: String, thumbnailPath: String?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            recordDao.deleteRecordById(id)
+            if (!thumbnailPath.isNullOrBlank()) {
+                val file = File(thumbnailPath)
+                if (file.exists()) {
+                    file.delete()
+                }
             }
-            current.copy(logs = next)
+        }
+    }
+
+    private fun appendLog(line: String) {
+        viewModelScope.launch(Dispatchers.Default) {
+            logMutex.lock()
+            try {
+                val lines = line.split("\n")
+                for (l in lines) {
+                    if (l.isNotEmpty() || lines.size == 1) {
+                        logBuffer.addLast(l)
+                    }
+                }
+                while (logBuffer.size > 300) {
+                    logBuffer.removeFirst()
+                }
+                val newLogs = logBuffer.joinToString("\n") + if (logBuffer.isNotEmpty()) "\n" else ""
+                _activeTaskState.update { current ->
+                    current.copy(logs = newLogs)
+                }
+            } finally {
+                logMutex.unlock()
+            }
         }
     }
 

@@ -78,6 +78,13 @@ data class DownloadRequest(
     val youtube403Fallback: Boolean = true,
     val archiveFile: String = "",
     val clips: List<MicroClip> = emptyList(),
+    val wifiOnly: Boolean = false,
+    val schedulerEnabled: Boolean = false,
+    val schedulerTime: String = "03:00",
+    val folderOrg: String = "None",
+    val clipPrecise: Boolean = false,
+    val taskId: String = java.util.UUID.randomUUID().toString(),
+    val thumbnailPath: String? = null,
 ) {
     fun toJsonString(): String {
         val obj = org.json.JSONObject()
@@ -86,6 +93,7 @@ data class DownloadRequest(
             .put("outputTemplate", outputTemplate)
             .put("executablePath", executablePath)
             .put("ffmpegLocation", ffmpegLocation)
+            .put("clipPrecise", clipPrecise)
             .put("mode", mode.name)
             .put("videoPreset", videoPreset)
             .put("customVideoHeight", customVideoHeight)
@@ -110,6 +118,12 @@ data class DownloadRequest(
             .put("extraArgs", extraArgs)
             .put("youtube403Fallback", youtube403Fallback)
             .put("archiveFile", archiveFile)
+            .put("wifiOnly", wifiOnly)
+            .put("schedulerEnabled", schedulerEnabled)
+            .put("schedulerTime", schedulerTime)
+            .put("folderOrg", folderOrg)
+            .put("taskId", taskId)
+            .put("thumbnailPath", thumbnailPath ?: "")
         
         val clipsArray = org.json.JSONArray()
         clips.forEach { clip ->
@@ -179,7 +193,14 @@ data class DownloadRequest(
                 extraArgs = obj.getString("extraArgs"),
                 youtube403Fallback = obj.getBoolean("youtube403Fallback"),
                 archiveFile = obj.optString("archiveFile", ""),
-                clips = clips
+                clips = clips,
+                wifiOnly = obj.optBoolean("wifiOnly", false),
+                schedulerEnabled = obj.optBoolean("schedulerEnabled", false),
+                schedulerTime = obj.optString("schedulerTime", "03:00"),
+                folderOrg = obj.optString("folderOrg", "None"),
+                clipPrecise = obj.optBoolean("clipPrecise", false),
+                taskId = obj.optString("taskId", java.util.UUID.randomUUID().toString()),
+                thumbnailPath = obj.optString("thumbnailPath", "").takeIf { it.isNotEmpty() }
             )
         }
     }
@@ -189,8 +210,10 @@ sealed interface DownloadEvent {
     data class LogLine(val text: String) : DownloadEvent
     data class Progress(val value: Float) : DownloadEvent
     data class Status(val text: String) : DownloadEvent
-    data class Finished(val success: Boolean, val exitCode: Int, val sizeBytes: Long = 0L) : DownloadEvent
+    data class Finished(val success: Boolean, val exitCode: Int, val sizeBytes: Long = 0L, val filePath: String = "") : DownloadEvent
 }
+
+data class SponsorSegment(val start: Float, val end: Float, val category: String)
 
 data class DownloadRecord(
     val id: String,
@@ -198,6 +221,7 @@ data class DownloadRecord(
     val url: String,
     val format: String,
     val downloadedAt: Long,
-    val fileSizeBytes: Long
+    val fileSizeBytes: Long,
+    val thumbnailPath: String? = null
 )
 

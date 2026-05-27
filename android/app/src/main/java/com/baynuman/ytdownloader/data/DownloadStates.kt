@@ -32,7 +32,14 @@ data class DownloadPreferencesState(
     val outputTemplate: String = "",
     val clipEnabled: Boolean = false,
     val clipStart: String = "00:00",
-    val clipEnd: String = "00:00"
+    val clipEnd: String = "00:00",
+    val wifiOnly: Boolean = false,
+    val schedulerEnabled: Boolean = false,
+    val schedulerTime: String = "03:00",
+    val userExplicit: Boolean = false,
+    val folderOrg: String = "None",
+    val clipPrecise: Boolean = false,
+    val compactMode: Boolean = false
 )
 
 data class ActiveTaskState(
@@ -42,7 +49,10 @@ data class ActiveTaskState(
     val speedText: String = "--",
     val etaText: String = "--",
     val logs: String = "Uygulama hazir.\n",
-    val playlistProgressText: String = ""
+    val playlistProgressText: String = "",
+    val speedHistory: List<Float> = List(60) { 0f },
+    val speedWriteIdx: Int = 0,
+    val emaSmoothed: Float = 0f
 )
 
 data class FormValidationState(
@@ -54,5 +64,6 @@ data class FormValidationState(
     val previewItemCount: Int? = null,
     val sharedUrlBuffer: String = "",
     val clipTextDetected: String = "",
-    val errorText: String? = null
+    val errorText: String? = null,
+    val sponsorSegments: List<SponsorSegment> = emptyList()
 )

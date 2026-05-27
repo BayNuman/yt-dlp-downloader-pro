@@ -23,6 +23,22 @@ private val DarkColors = darkColorScheme(
     error = AccentRed,
 )
 
+private val AmoledColors = darkColorScheme(
+    primary = AccentCyan,
+    secondary = AccentGreen,
+    tertiary = AccentIndigo,
+    background = Color(0xFF000000),      // Pure AMOLED Black
+    surface = Color(0xFF0D0D0D),         // Slightly elevated card for depth
+    surfaceVariant = Color(0xFF1F1F1F),  // Elevated dark border
+    onPrimary = Color.Black,
+    onSecondary = Color.Black,
+    onTertiary = Color.Black,
+    onBackground = SoftTextDark,
+    onSurface = SoftTextDark,
+    onSurfaceVariant = MutedTextDark,
+    error = AccentRed,
+)
+
 private val LightColors = lightColorScheme(
     primary = AccentIndigo,
     secondary = AccentBlue,
@@ -41,10 +57,14 @@ private val LightColors = lightColorScheme(
 
 @Composable
 fun YtDownloaderTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: String = "DARK",
     content: @Composable () -> Unit,
 ) {
-    val colors = if (darkTheme) DarkColors else LightColors
+    val colors = when (themeMode) {
+        "LIGHT" -> LightColors
+        "AMOLED" -> AmoledColors
+        else -> DarkColors
+    }
 
     MaterialTheme(
         colorScheme = colors,

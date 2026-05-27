@@ -11,6 +11,7 @@ class TaskStatus(Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    PAUSED = "paused"
 
 @dataclass
 class DownloadTask:
@@ -48,6 +49,9 @@ class DownloadTask:
     youtube_403: bool = True
     output_template: str = ""
     extra_args: str = ""
+    options_source: str = "Default"  # "Default" or "User_Explicit"
+    folder_org: str = "None"  # "None", "Channel", "Year", "Format", "Channel_Year"
+    thumbnail_path: Optional[str] = None
 
     # Clipping configurations
     clip_enabled: bool = False
@@ -91,6 +95,37 @@ def get_default_lang() -> str:
         pass
     return "en"
 
+def load_app_preferences(prefs):
+    from core.history import get_app_data_dir
+    import json
+    path = get_app_data_dir() / "settings.json"
+    if path.exists():
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            prefs.output_dir = data.get("output_dir", prefs.output_dir)
+            prefs.current_lang = data.get("current_lang", prefs.current_lang)
+            prefs.current_theme = data.get("current_theme", prefs.current_theme)
+            prefs.compact_mode = data.get("compact_mode", prefs.compact_mode)
+        except Exception as e:
+            print(f"[warning] Failed to load settings: {e}")
+
+def save_app_preferences(prefs):
+    from core.history import get_app_data_dir
+    import json
+    path = get_app_data_dir() / "settings.json"
+    try:
+        data = {
+            "output_dir": prefs.output_dir,
+            "current_lang": prefs.current_lang,
+            "current_theme": prefs.current_theme,
+            "compact_mode": getattr(prefs, "compact_mode", False)
+        }
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        print(f"[warning] Failed to save settings: {e}")
+
 @dataclass
 class AppPreferences:
     # Target download directories & settings
@@ -116,6 +151,8 @@ class AppPreferences:
     concurrent_fragments: str = "3"
     output_template: str = ""
     extra_args: str = ""
+    folder_org: str = "None"  # "None", "Channel", "Year", "Format", "Channel_Year"
+    compact_mode: bool = False
 
     # Multi-worker concurrency count
     max_workers: int = 3
@@ -131,6 +168,7 @@ class AppState:
 
     # Metadata caching
     current_video_info: Optional[Dict] = None  # Caches active metadata
+    current_thumbnail_path: Optional[str] = None
 
     # Strongly typed active download queue
     queue_list: List[DownloadTask] = field(default_factory=list)
@@ -148,21 +186,27 @@ class AppState:
 
     def __post_init__(self):
         self._lock = threading.RLock()
+        try:
+            load_app_preferences(self.preferences)
+        except Exception:
+            pass
+
+    _PREFERENCE_FIELDS = {
+        "output_dir", "current_lang", "current_theme", "active_profile",
+        "custom_settings", "sponsorblock_enabled", "browser_cookies", "speed_limit",
+        "metadata_flag", "thumbnail_flag", "subtitle_flag", "auto_subtitle_flag",
+        "restrict_filenames", "keep_video_flag", "embed_chapters", "concurrent_fragments",
+        "output_template", "extra_args", "folder_org", "compact_mode", "max_workers"
+    }
 
     # Dynamic Delegation Pattern for Property Proxies
     def __getattr__(self, name):
-        if name.startswith("__") and name.endswith("__"):
-            raise AttributeError
-        if hasattr(self, "preferences"):
-            pref = object.__getattribute__(self, "preferences")
-            if hasattr(pref, name):
-                return getattr(pref, name)
+        if name in AppState._PREFERENCE_FIELDS:
+            return getattr(self.preferences, name)
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
     def __setattr__(self, name, value):
-        if name != "preferences" and hasattr(self, "preferences"):
-            pref = object.__getattribute__(self, "preferences")
-            if hasattr(pref, name):
-                setattr(pref, name, value)
-                return
-        object.__setattr__(self, name, value)
+        if name in AppState._PREFERENCE_FIELDS:
+            setattr(self.preferences, name, value)
+        else:
+            object.__setattr__(self, name, value)

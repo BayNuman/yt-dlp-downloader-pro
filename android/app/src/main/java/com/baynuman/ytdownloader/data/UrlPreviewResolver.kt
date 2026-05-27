@@ -12,6 +12,8 @@ data class UrlPreview(
     val channel: String,
     val isPlaylist: Boolean,
     val itemCount: Int?,
+    val thumbnailUrl: String? = null,
+    val channelId: String? = null
 )
 
 class UrlPreviewResolver(
@@ -48,6 +50,12 @@ class UrlPreviewResolver(
             "Kanal alinamadi"
         }
 
+        val thumbnailUrl = json.optString("thumbnail").takeIf { it.isNotBlank() }
+            ?: json.optJSONArray("thumbnails")?.optJSONObject(0)?.optString("url")
+
+        val channelId = json.optString("channel_id").takeIf { it.isNotBlank() }
+            ?: json.optString("uploader_id").takeIf { it.isNotBlank() }
+
         val entries = json.optJSONArray("entries")
         val isPlaylist = json.optString("_type").equals("playlist", ignoreCase = true) ||
             url.contains("list=", ignoreCase = true)
@@ -62,6 +70,8 @@ class UrlPreviewResolver(
             channel = channel,
             isPlaylist = isPlaylist,
             itemCount = itemCount,
+            thumbnailUrl = thumbnailUrl,
+            channelId = channelId
         )
     }
 

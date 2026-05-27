@@ -37,8 +37,50 @@ class QueuePanel(ctk.CTkFrame):
         self._active_card_ids = []
         self._active_tab_snapshot = None
         
+        # Asynchronous thumbnail caching and worker pool to prevent scroll jank!
+        self.image_cache = {}
+        from concurrent.futures import ThreadPoolExecutor
+        self.image_loader_pool = ThreadPoolExecutor(max_workers=4)
+        
         self.grid_columnconfigure(0, weight=1)
         self._build_ui()
+
+    def _async_load_thumbnail(self, thumb_path: str, label_widget):
+        if not thumb_path or not os.path.exists(thumb_path):
+            return
+            
+        def load_thread():
+            try:
+                from PIL import Image
+                with Image.open(thumb_path) as pil_img:
+                    img_width = pil_img.width
+                    img_height = pil_img.height
+                    aspect = img_width / img_height if img_height > 0 else 1.0
+
+                    if aspect > 2.5:  # Waveform (320x60 = 5.3:1)
+                        target_w, target_h = 80, 15
+                    else:  # Normal thumbnail (16:9 = 1.78:1)
+                        target_w, target_h = 80, 45
+
+                    # Support Pillow versions with Resampling or legacy ANTIALIAS fallback
+                    resample_filter = Image.Resampling.LANCZOS if hasattr(Image, "Resampling") else Image.ANTIALIAS
+                    resized = pil_img.resize((target_w, target_h), resample_filter).copy()
+                    size = (target_w, target_h)
+                self.after(0, self._set_loaded_image, thumb_path, resized, label_widget, size)
+            except Exception as e:
+                print(f"[!] Async thumbnail load error: {e}")
+                
+        self.image_loader_pool.submit(load_thread)
+
+    def _set_loaded_image(self, thumb_path: str, pil_img, label_widget, size=(80, 45)):
+        try:
+            # Create CTkImage inside main thread to be fully thread-safe
+            ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=size)
+            self.image_cache[thumb_path] = ctk_img
+            if label_widget.winfo_exists():
+                label_widget.configure(image=ctk_img, text="")
+        except Exception:
+            pass
 
     def _build_ui(self):
         lang = self.app_state.current_lang
@@ -136,9 +178,9 @@ class QueuePanel(ctk.CTkFrame):
         lang = self.app_state.current_lang
 
         if tab == "active":
-            # Smart diffing: compute current card IDs and compare with snapshot
-            current_ids = [item.id for item in self.app_state.queue_list]
-            if current_ids == self._active_card_ids and self._active_tab_snapshot == "active":
+            # Smart diffing: compute current card IDs and status codes to avoid unnecessary rebuilds
+            current_states = [(item.id, item.status_code) for item in self.app_state.queue_list]
+            if current_states == self._active_card_ids and self._active_tab_snapshot == "active":
                 # Composition unchanged — only update text content of existing cards
                 for item in self.app_state.queue_list:
                     status_text = self._get_translated_status(item, lang)
@@ -146,6 +188,8 @@ class QueuePanel(ctk.CTkFrame):
                     if item.status_code == TaskStatus.DOWNLOADING:
                         dl_str = TRANSLATIONS[lang].get("lbl_task_downloading", "Downloading")
                         status_text = f"{dl_str} ({item.percent:.1f}% - {item.speed})"
+                    elif item.status_code == TaskStatus.PAUSED:
+                        status_text = TRANSLATIONS[lang].get("lbl_task_paused", "Paused")
                     if item.id in self.card_status_labels:
                         self.card_status_labels[item.id].configure(text=status_text)
                     if item.id in self.card_dot_labels:
@@ -157,7 +201,7 @@ class QueuePanel(ctk.CTkFrame):
                 child.destroy()
             self.card_status_labels.clear()
             self.card_dot_labels.clear()
-            self._active_card_ids = current_ids
+            self._active_card_ids = current_states
             self._active_tab_snapshot = "active"
 
             # RENDER ACTIVE QUEUE
@@ -207,6 +251,8 @@ class QueuePanel(ctk.CTkFrame):
                 if item.status_code == TaskStatus.DOWNLOADING:
                     dl_str = TRANSLATIONS[lang].get("lbl_task_downloading", "Downloading")
                     display_status = f"{dl_str} ({item.percent:.1f}% - {item.speed})"
+                elif item.status_code == TaskStatus.PAUSED:
+                    display_status = TRANSLATIONS[lang].get("lbl_task_paused", "Paused")
 
                 status_lbl = ctk.CTkLabel(card, text=display_status, font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), text_color=THEME_TEXT_SECONDARY)
                 status_lbl.grid(row=0, column=3, padx=10)
@@ -271,8 +317,8 @@ class QueuePanel(ctk.CTkFrame):
                     corner_radius=10
                 )
                 card.grid(row=idx, column=0, padx=6, pady=4, sticky="ew")
-                card.grid_columnconfigure(1, weight=1)
-                card.grid_columnconfigure((0, 2, 3, 4, 5), weight=0)
+                card.grid_columnconfigure(2, weight=1)
+                card.grid_columnconfigure((0, 1, 3, 4, 5, 6), weight=0)
 
                 # Status Dot Indicator
                 dot_color = THEME_TEXT_SECONDARY
@@ -281,32 +327,45 @@ class QueuePanel(ctk.CTkFrame):
                     dot_color = THEME_ACCENT_GREEN
                 elif status_str == "DOWNLOADING":
                     dot_color = THEME_ACCENT_INDIGO
-                elif status_str == "CANCELLED" or status_str == "FAILED":
+                elif status_str in ("PAUSED", "Paused"):
+                    dot_color = "#d97706"
+                elif status_str in ("CANCELLED", "FAILED"):
                     dot_color = THEME_ACCENT_RED
                 else:
                     dot_color = THEME_ACCENT_BLUE
 
-                ctk.CTkLabel(card, text="●", text_color=dot_color, font=ctk.CTkFont(size=14)).grid(row=0, column=0, padx=(12, 6))
+                ctk.CTkLabel(card, text="●", text_color=dot_color, font=ctk.CTkFont(size=14)).grid(row=0, column=0, padx=(12, 4))
 
-                # Text Title
+                # Thumbnail Column 1 (Async Cache Loaded)
+                thumb_path = item.get("thumbnail_path")
+                thumb_lbl = ctk.CTkLabel(card, text="🎬", width=80, height=45, fg_color=THEME_BG, corner_radius=6)
+                thumb_lbl.grid(row=0, column=1, padx=6, pady=4)
+                
+                if thumb_path:
+                    if thumb_path in self.image_cache:
+                        thumb_lbl.configure(image=self.image_cache[thumb_path], text="")
+                    else:
+                        self._async_load_thumbnail(thumb_path, thumb_lbl)
+
+                # Text Title on Column 2
                 title_text = item.get("title", "Unknown Video")
                 if len(title_text) > 40:
                     title_text = title_text[:37] + "..."
                 title_lbl = ctk.CTkLabel(card, text=title_text, font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color=THEME_TEXT_PRIMARY, anchor="w")
-                title_lbl.grid(row=0, column=1, padx=6, pady=8, sticky="w")
+                title_lbl.grid(row=0, column=2, padx=6, pady=8, sticky="w")
 
-                # Format details
+                # Format details on Column 3
                 format_lbl = ctk.CTkLabel(card, text=item.get("format", "Video"), text_color=THEME_CARD_SUBTITLE, font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"))
-                format_lbl.grid(row=0, column=2, padx=10)
+                format_lbl.grid(row=0, column=3, padx=10)
 
-                # Date of download
+                # Date of download on Column 4
                 timestamp = item.get("downloaded_at", 0)
                 time_struct = time.localtime(timestamp)
                 date_str = time.strftime("%d/%m/%Y %H:%M", time_struct)
                 date_lbl = ctk.CTkLabel(card, text=date_str, font=ctk.CTkFont(family="Segoe UI", size=10), text_color=THEME_TEXT_SECONDARY)
-                date_lbl.grid(row=0, column=3, padx=10)
+                date_lbl.grid(row=0, column=4, padx=10)
 
-                # 1. Premium "Re-download" Button
+                # 1. Premium "Re-download" Button on Column 5
                 redl_btn = ctk.CTkButton(
                     card,
                     text=TRANSLATIONS[lang]["btn_redownload"],
@@ -321,9 +380,9 @@ class QueuePanel(ctk.CTkFrame):
                     font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
                     command=lambda u=item.get("url"), f=item.get("format"): self.on_redownload(u, f)
                 )
-                redl_btn.grid(row=0, column=4, padx=4)
+                redl_btn.grid(row=0, column=5, padx=4)
 
-                # 2. Premium "Open Folder" Button (only active if file path exists)
+                # 2. Premium "Open Folder" Button (only active if file path exists) on Column 6
                 file_path = item.get("file_path", "")
                 folder_exists = file_path and os.path.exists(Path(file_path).parent)
                 folder_state = "normal" if folder_exists else "disabled"
@@ -343,7 +402,7 @@ class QueuePanel(ctk.CTkFrame):
                     font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
                     command=lambda p=file_path: self._open_native_folder(p)
                 )
-                folder_btn.grid(row=0, column=5, padx=(4, 12))
+                folder_btn.grid(row=0, column=6, padx=(4, 12))
 
     @staticmethod
     def _dot_color_for_status(status_code: TaskStatus) -> str:

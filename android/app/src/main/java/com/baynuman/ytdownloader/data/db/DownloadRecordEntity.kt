@@ -1,5 +1,6 @@
 package com.baynuman.ytdownloader.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.baynuman.ytdownloader.data.DownloadRecord
@@ -11,7 +12,8 @@ data class DownloadRecordEntity(
     val url: String,
     val format: String,
     val downloadedAt: Long,
-    val fileSizeBytes: Long
+    val fileSizeBytes: Long,
+    @ColumnInfo(name = "thumbnail_path") val thumbnailPath: String? = null
 ) {
     fun toDomainModel(): DownloadRecord {
         return DownloadRecord(
@@ -20,7 +22,8 @@ data class DownloadRecordEntity(
             url = url,
             format = format,
             downloadedAt = downloadedAt,
-            fileSizeBytes = fileSizeBytes
+            fileSizeBytes = fileSizeBytes,
+            thumbnailPath = thumbnailPath
         )
     }
 
@@ -32,7 +35,8 @@ data class DownloadRecordEntity(
                 url = record.url,
                 format = record.format,
                 downloadedAt = record.downloadedAt,
-                fileSizeBytes = record.fileSizeBytes
+                fileSizeBytes = record.fileSizeBytes,
+                thumbnailPath = record.thumbnailPath
             )
         }
     }

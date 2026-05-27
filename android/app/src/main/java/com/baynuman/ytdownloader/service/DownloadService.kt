@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 class DownloadService : Service() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val waveformExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -35,8 +36,12 @@ class DownloadService : Service() {
         createNotificationChannel()
     }
 
+    private var networkCallback: android.net.ConnectivityManager.NetworkCallback? = null
+
     override fun onDestroy() {
+        unregisterWifiOnlyKillSwitch()
         serviceScope.cancel()
+        waveformExecutor.shutdown()
         super.onDestroy()
     }
 
@@ -85,9 +90,71 @@ class DownloadService : Service() {
         return START_NOT_STICKY
     }
 
+    private fun registerWifiOnlyKillSwitch() {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val request = android.net.NetworkRequest.Builder()
+            .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        
+        val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(
+                network: android.net.Network,
+                networkCapabilities: android.net.NetworkCapabilities
+            ) {
+                super.onCapabilitiesChanged(network, networkCapabilities)
+                val isMetered = !networkCapabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+                val isCellular = networkCapabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)
+                if (isMetered || isCellular) {
+                    Log.w("DownloadService", "Wifi-Only: Switched to cellular network. Aborting download to prevent network bleeding.")
+                    serviceScope.launch {
+                        downloadEvents.emit(DownloadEvent.LogLine("[hata] WiFi bağlantısı kesildi! Hücresel veri kullanımını önlemek için indirme iptal edildi.\n"))
+                    }
+                    cancelActiveDownload()
+                    stopForegroundService()
+                }
+            }
+
+            override fun onLost(network: android.net.Network) {
+                super.onLost(network)
+                Log.w("DownloadService", "Wifi-Only: Network connection lost completely.")
+                serviceScope.launch {
+                    downloadEvents.emit(DownloadEvent.LogLine("[hata] Ağ bağlantısı tamamen kesildi! İndirme durduruldu.\n"))
+                }
+                cancelActiveDownload()
+                stopForegroundService()
+            }
+        }
+        
+        try {
+            cm.registerNetworkCallback(request, callback)
+            networkCallback = callback
+            Log.d("DownloadService", "Registered Wifi-Only Connectivity NetworkCallback Kill-Switch")
+        } catch (e: Exception) {
+            Log.e("DownloadService", "Failed to register network callback", e)
+        }
+    }
+
+    private fun unregisterWifiOnlyKillSwitch() {
+        networkCallback?.let { callback ->
+            try {
+                val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+                cm.unregisterNetworkCallback(callback)
+                Log.d("DownloadService", "Unregistered Wifi-Only Connectivity NetworkCallback")
+            } catch (e: Exception) {
+                Log.e("DownloadService", "Failed to unregister network callback", e)
+            }
+            networkCallback = null
+        }
+    }
+
     private fun startDownloadJob(request: DownloadRequest, title: String) {
         isRunning.value = true
         activeRequest = request
+        
+        if (request.wifiOnly) {
+            registerWifiOnlyKillSwitch()
+        }
+
         serviceScope.launch {
             try {
                 val runner = YtDlpRunner(applicationContext)
@@ -96,10 +163,20 @@ class DownloadService : Service() {
                 // Speed & ETA regex for parsing inside the service to update notification
                 val speedRegex = Regex("""\bat\s+([0-9.]+\s*[KMGT]?i?B/s)""", RegexOption.IGNORE_CASE)
                 val etaRegex = Regex("""\bETA\s+([0-9:.]+)""", RegexOption.IGNORE_CASE)
+                val batchProgressRegex = Regex("""\[download\]\s+Downloading\s+video\s+(\d+)\s+of\s+(\d+)""", RegexOption.IGNORE_CASE)
+                val destRegex = Regex("""\[download\]\s+Destination:\s+(.+)""", RegexOption.IGNORE_CASE)
+                val alreadyRegex = Regex("""\[download\]\s+(.+)\s+has already been downloaded""", RegexOption.IGNORE_CASE)
+                val mergerRegex = Regex("""\[Merger\]\s+Merging\s+formats\s+into\s+"(.+)"""", RegexOption.IGNORE_CASE)
                 
                 var currentSpeed = "--"
                 var currentEta = "--"
                 var currentProgressPercent = 0
+
+                val urls = request.urls
+                var batchTotalCount = urls.size
+                var batchCurrentIndex = 0
+                var batchCompletedCount = 0
+                var batchActiveTitle = if (urls.isNotEmpty()) "İndiriliyor..." else ""
 
                 runner.run(request) { event ->
                     // Emit event to shared flow
@@ -112,22 +189,64 @@ class DownloadService : Service() {
                         is DownloadEvent.Progress -> {
                             val percent = (event.value * 100).toInt().coerceIn(0, 100)
                             currentProgressPercent = percent
-                            updateNotification(title, currentProgressPercent, currentSpeed, currentEta)
+                            updateNotification(
+                                title = title,
+                                progress = currentProgressPercent,
+                                speed = currentSpeed,
+                                eta = currentEta,
+                                force = false,
+                                batchCurrentIndex = batchCurrentIndex,
+                                batchTotalCount = batchTotalCount,
+                                batchCompletedCount = batchCompletedCount,
+                                batchActiveTitle = batchActiveTitle
+                            )
                         }
                         is DownloadEvent.LogLine -> {
                             val line = event.text
+                            
+                            batchProgressRegex.find(line)?.let { match ->
+                                val curr = match.groupValues[1].toIntOrNull()
+                                val total = match.groupValues[2].toIntOrNull()
+                                if (curr != null && total != null) {
+                                    batchCurrentIndex = curr - 1
+                                    batchTotalCount = total
+                                    batchCompletedCount = batchCurrentIndex
+                                }
+                            }
+
+                            val destMatch = destRegex.find(line)?.groupValues?.getOrNull(1)
+                                ?: alreadyRegex.find(line)?.groupValues?.getOrNull(1)
+                                ?: mergerRegex.find(line)?.groupValues?.getOrNull(1)
+                            if (destMatch != null) {
+                                val file = java.io.File(destMatch)
+                                batchActiveTitle = file.name
+                            }
+
                             val speedMatch = speedRegex.find(line)?.groupValues?.getOrNull(1)
                             val etaMatch = etaRegex.find(line)?.groupValues?.getOrNull(1)
-                            if (speedMatch != null || etaMatch != null) {
+                            if (speedMatch != null || etaMatch != null || line.contains("Destination:") || line.contains("has already been downloaded")) {
                                 currentSpeed = speedMatch ?: currentSpeed
                                 currentEta = etaMatch ?: currentEta
-                                updateNotification(title, currentProgressPercent, currentSpeed, currentEta)
+                                updateNotification(
+                                    title = title,
+                                    progress = currentProgressPercent,
+                                    speed = currentSpeed,
+                                    eta = currentEta,
+                                    force = false,
+                                    batchCurrentIndex = batchCurrentIndex,
+                                    batchTotalCount = batchTotalCount,
+                                    batchCompletedCount = batchCompletedCount,
+                                    batchActiveTitle = batchActiveTitle
+                                )
                             }
                         }
                         is DownloadEvent.Status -> {
                             // Update status if needed
                         }
                         is DownloadEvent.Finished -> {
+                            if (event.success && request.mode == com.baynuman.ytdownloader.data.DownloadMode.AUDIO && event.filePath.isNotBlank()) {
+                                enqueueWaveformGeneration(request, event.filePath)
+                            }
                             stopForegroundService()
                         }
                     }
@@ -141,6 +260,9 @@ class DownloadService : Service() {
                 activeRunner = null
                 activeRequest = null
                 isRunning.value = false
+                if (request.wifiOnly) {
+                    unregisterWifiOnlyKillSwitch()
+                }
             }
         }
     }
@@ -157,9 +279,35 @@ class DownloadService : Service() {
         stopSelf()
     }
 
-    private fun updateNotification(title: String, progress: Int, speed: String, eta: String) {
+    private var lastNotificationTime = 0L
+
+    private fun updateNotification(
+        title: String,
+        progress: Int,
+        speed: String,
+        eta: String,
+        force: Boolean = false,
+        batchCurrentIndex: Int = 0,
+        batchTotalCount: Int = 1,
+        batchCompletedCount: Int = 0,
+        batchActiveTitle: String = ""
+    ) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastNotificationTime < 1000L) {
+            return
+        }
+        lastNotificationTime = now
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val notification = buildProgressNotification(title, progress, speed, eta)
+        val notification = buildProgressNotification(
+            title = title,
+            progress = progress,
+            speed = speed,
+            valEta = eta,
+            batchCurrentIndex = batchCurrentIndex,
+            batchTotalCount = batchTotalCount,
+            batchCompletedCount = batchCompletedCount,
+            batchActiveTitle = batchActiveTitle
+        )
         manager.notify(NOTIFICATION_ID, notification)
     }
 
@@ -167,7 +315,11 @@ class DownloadService : Service() {
         title: String,
         progress: Int,
         speed: String,
-        valEta: String
+        valEta: String,
+        batchCurrentIndex: Int = 0,
+        batchTotalCount: Int = 1,
+        batchCompletedCount: Int = 0,
+        batchActiveTitle: String = ""
     ): Notification {
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -177,22 +329,44 @@ class DownloadService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val speedEta = if (speed != "--" || valEta != "--") {
-            "Speed: $speed  •  ETA: $valEta"
-        } else {
-            "Downloading..."
-        }
-
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(title)
-            .setContentText(speedEta)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setProgress(100, progress, false)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setSilent(true)
             .setOnlyAlertOnce(true)
-            .build()
+
+        if (batchTotalCount > 1) {
+            val currentIdxHuman = (batchCurrentIndex + 1).coerceAtMost(batchTotalCount)
+            val headline = "İndiriliyor ($currentIdxHuman/$batchTotalCount)"
+            val activeText = "▶ $batchActiveTitle: $progress% ($speed)"
+            val remaining = batchTotalCount - currentIdxHuman
+            val summaryText = "✓ $batchCompletedCount tamamlandı, $remaining bekliyor"
+
+            builder.setContentTitle(headline)
+            builder.setContentText(activeText)
+            builder.setProgress(100, progress, false)
+
+            val inboxStyle = NotificationCompat.InboxStyle()
+                .setBigContentTitle(headline)
+                .addLine(activeText)
+                .addLine(summaryText)
+            if (valEta != "--" && valEta.isNotBlank()) {
+                inboxStyle.setSummaryText("Kalan süre: $valEta")
+            }
+            builder.setStyle(inboxStyle)
+        } else {
+            val speedEta = if (speed != "--" || valEta != "--") {
+                "Speed: $speed  •  ETA: $valEta"
+            } else {
+                "Downloading..."
+            }
+            builder.setContentTitle(title)
+            builder.setContentText(speedEta)
+            builder.setProgress(100, progress, false)
+        }
+
+        return builder.build()
     }
 
     private fun createNotificationChannel() {
@@ -210,6 +384,76 @@ class DownloadService : Service() {
         }
     }
 
+    private fun enqueueWaveformGeneration(request: DownloadRequest, filePath: String) {
+        val context = applicationContext
+        waveformExecutor.submit {
+            try {
+                val audioFile = java.io.File(filePath)
+                if (!audioFile.exists() || !audioFile.isFile) return@submit
+
+                val waveformsDir = java.io.File(context.filesDir, "waveforms")
+                if (!waveformsDir.exists()) {
+                    waveformsDir.mkdirs()
+                }
+                val uuid = java.util.UUID.randomUUID().toString()
+                val outputPng = java.io.File(waveformsDir, "waveform_$uuid.png")
+
+                // Resolve FFmpeg path
+                val runner = YtDlpRunner(context)
+                val ffmpegBin = runner.getFFmpegFile()
+                if (!ffmpegBin.exists()) {
+                    Log.w("DownloadService", "FFmpeg binary not found for waveform generation.")
+                    return@submit
+                }
+
+                // Command: ffmpeg -i input.mp3 -filter_complex "aresample=1000,showwavespic=s=320x60:colors=#6366f1" -frames:v 1 output.png
+                val cmd = listOf(
+                    ffmpegBin.absolutePath,
+                    "-y",
+                    "-i", audioFile.absolutePath,
+                    "-filter_complex", "aresample=1000,showwavespic=s=320x60:colors=#6366f1",
+                    "-frames:v", "1",
+                    outputPng.absolutePath
+                )
+
+                Log.d("DownloadService", "Enqueuing waveform: $cmd")
+                val process = ProcessBuilder(cmd)
+                    .redirectErrorStream(true)
+                    .start()
+
+                // Read output to avoid process block
+                process.inputStream.bufferedReader().use { reader ->
+                    while (reader.readLine() != null) { /* no-op */ }
+                }
+
+                val exitCode = process.waitFor()
+                if (exitCode == 0 && outputPng.exists()) {
+                    Log.i("DownloadService", "Waveform successfully generated at: ${outputPng.absolutePath}")
+                    // Update SQLite database record using taskId directly with a retry block (B1 / B4)
+                    val db = com.baynuman.ytdownloader.data.db.DownloadDatabase.getDatabase(context)
+                    val dao = db.downloadRecordDao()
+                    
+                    var rowsUpdated = 0
+                    for (i in 1..20) {
+                        rowsUpdated = dao.updateThumbnailPath(request.taskId, outputPng.absolutePath)
+                        if (rowsUpdated > 0) {
+                            Log.i("DownloadService", "Waveform path updated in DB for taskId: ${request.taskId}")
+                            break
+                        }
+                        Thread.sleep(500) // Wait for database insertion from ViewModel
+                    }
+                    if (rowsUpdated == 0) {
+                        Log.w("DownloadService", "Failed to update waveform path in DB: record not found for taskId: ${request.taskId}")
+                    }
+                } else {
+                    Log.w("DownloadService", "FFmpeg waveform process failed (exit code: $exitCode)")
+                }
+            } catch (e: Exception) {
+                Log.e("DownloadService", "Error during sequential waveform generation", e)
+            }
+        }
+    }
+
     companion object {
         private const val NOTIFICATION_ID = 4040
         private const val CHANNEL_ID = "download_progress_channel"
@@ -224,13 +468,16 @@ class DownloadService : Service() {
         const val EXTRA_ETA = "extra_eta"
         const val EXTRA_REQUEST_JSON = "extra_request_json"
 
-        val downloadEvents = MutableSharedFlow<DownloadEvent>(extraBufferCapacity = 128)
-        val isRunning = MutableStateFlow(false)
+        // Delegate to thread-safe Application-scoped Repository Singleton (A1)
+        val downloadEvents get() = com.baynuman.ytdownloader.data.DownloadRepository.downloadEvents
+        val isRunning get() = com.baynuman.ytdownloader.data.DownloadRepository.isRunning
         
-        @Volatile
-        private var activeRunner: YtDlpRunner? = null
-        
-        @Volatile
-        var activeRequest: DownloadRequest? = null
+        var activeRunner: YtDlpRunner?
+            get() = com.baynuman.ytdownloader.data.DownloadRepository.activeRunner
+            set(value) { com.baynuman.ytdownloader.data.DownloadRepository.activeRunner = value }
+            
+        var activeRequest: DownloadRequest?
+            get() = com.baynuman.ytdownloader.data.DownloadRepository.activeRequest
+            set(value) { com.baynuman.ytdownloader.data.DownloadRepository.activeRequest = value }
     }
 }

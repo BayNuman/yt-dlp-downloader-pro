@@ -1,16 +1,25 @@
 package com.baynuman.ytdownloader.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material.icons.outlined.ContentPaste
@@ -18,13 +27,26 @@ import androidx.compose.material.icons.outlined.Info
 import android.content.Context
 import android.content.Intent
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -52,6 +74,14 @@ import com.baynuman.ytdownloader.ui.theme.AccentRed
 import com.baynuman.ytdownloader.ui.theme.ObsidianBg
 import com.baynuman.ytdownloader.ui.theme.PastelBg
 
+data class PickerData(
+    val title: String,
+    val options: List<String>,
+    val onSelect: (String) -> Unit
+)
+
+val LocalShowPicker = androidx.compose.runtime.staticCompositionLocalOf<(PickerData) -> Unit> { { } }
+
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 fun DownloaderScreen(
@@ -67,12 +97,14 @@ fun DownloaderScreen(
         label = "download-progress",
     )
     var showLogSheet by remember { mutableStateOf(false) }
+    var activePickerData by remember { mutableStateOf<PickerData?>(null) }
     val lang = state.currentLanguage
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
 
     // Smart auto-paste and clipboard monitor on resume/focus
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.CompositionLocalProvider(LocalShowPicker provides { data -> activePickerData = data }) {
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
@@ -94,6 +126,48 @@ fun DownloaderScreen(
         }
     )
 
+    if (state.showDuplicateDialog && state.duplicateTaskRequest != null) {
+        val req = state.duplicateTaskRequest
+        val titleVal = state.previewTitle.takeIf { it.isNotBlank() } ?: req.urls.firstOrNull() ?: ""
+        val formatVal = if (req.mode == DownloadMode.AUDIO) req.audioFormat else req.videoContainer
+        
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissDuplicateDialog() },
+            title = {
+                Text(
+                    text = Translations.get("lbl_duplicate_title", lang),
+                    style = MaterialTheme.typography.titleMedium
+                )
+            },
+            text = {
+                val rawBody = Translations.get("lbl_duplicate_body", lang)
+                val body = rawBody
+                    .replace("{title}", titleVal)
+                    .replace("{format}", formatVal)
+                Text(
+                    text = body,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.startDownloadActual(req)
+                    }
+                ) {
+                    Text(text = if (lang == "tr") "Evet" else if (lang == "es") "Sí" else "Yes")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { viewModel.dismissDuplicateDialog() }
+                ) {
+                    Text(text = if (lang == "tr") "Hayır" else if (lang == "es") "No" else "No")
+                }
+            }
+        )
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = Color.Transparent,
@@ -105,6 +179,7 @@ fun DownloaderScreen(
                         state = state,
                         progress = animatedProgress,
                         lang = lang,
+                        viewModel = viewModel,
                         onPrimaryAction = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             if (state.isRunning) {
@@ -186,8 +261,10 @@ fun DownloaderScreen(
                     ) {
                         item { HeaderCard(state = state, viewModel = viewModel, lang = lang) }
                         item { SourceSection(state = state, viewModel = viewModel, lang = lang) }
-                        item { PresetSection(state = state, viewModel = viewModel, lang = lang) }
-                        item { StorageSection(state = state, viewModel = viewModel, lang = lang, onPickOutputFolder = onPickOutputFolder, onRequestMediaPermissions = onRequestMediaPermissions) }
+                        if (!state.compactMode) {
+                            item { PresetSection(state = state, viewModel = viewModel, lang = lang) }
+                            item { StorageSection(state = state, viewModel = viewModel, lang = lang, onPickOutputFolder = onPickOutputFolder, onRequestMediaPermissions = onRequestMediaPermissions) }
+                        }
                     }
                 }
                 1 -> { // TAB 1: QUEUE MANAGER
@@ -224,6 +301,24 @@ fun DownloaderScreen(
                             }
                         }
 
+                        if (urlsList.isNotEmpty()) {
+                            item {
+                                Button(
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        viewModel.startDownload()
+                                    },
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = AppSpacing.xs).heightIn(min = 48.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = AccentIndigo)
+                                ) {
+                                    Text(
+                                        text = if (lang == "tr") "🚀 Sıradakileri İndir" else if (lang == "es") "🚀 Descargar Cola" else "🚀 Start Downloading Queue",
+                                        style = MaterialTheme.typography.titleSmall
+                                    )
+                                }
+                            }
+                        }
+
                         if (urlsList.isEmpty()) {
                             item {
                                 Card(
@@ -253,14 +348,19 @@ fun DownloaderScreen(
                                 }
                             }
                         } else {
-                            items(urlsList.size) { index ->
+                            items(urlsList.size, key = { index -> index }) { index ->
                                 val url = urlsList[index]
                                 val activeIndex = state.playlistProgressText.substringBefore("/").toIntOrNull()?.let { it - 1 } ?: 0
                                 val isActive = state.isRunning && activeIndex == index
+                                val isPinned = state.isRunning && index <= activeIndex
+                                
+                                var offsetY by remember { mutableStateOf(0f) }
+                                val density = androidx.compose.ui.platform.LocalDensity.current.density
                                 
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .offset(y = offsetY.dp)
                                         .background(
                                             color = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
                                             else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
@@ -272,6 +372,26 @@ fun DownloaderScreen(
                                             else Color.Transparent,
                                             shape = RoundedCornerShape(AppRadius.md)
                                         )
+                                        .pointerInput(isPinned) {
+                                            if (isPinned) return@pointerInput
+                                            detectDragGesturesAfterLongPress(
+                                                onDragStart = { /* Drag feedback */ },
+                                                onDragEnd = { offsetY = 0f },
+                                                onDragCancel = { offsetY = 0f },
+                                                onDrag = { change: PointerInputChange, dragAmount: androidx.compose.ui.geometry.Offset ->
+                                                    change.consume()
+                                                    offsetY += dragAmount.y / density
+                                                    val threshold = 56f
+                                                    if (offsetY > threshold && index < urlsList.size - 1) {
+                                                        viewModel.reorderBatchUrls(index, index + 1)
+                                                        offsetY -= threshold
+                                                    } else if (offsetY < -threshold && index > 0 && !(state.isRunning && index - 1 <= activeIndex)) {
+                                                        viewModel.reorderBatchUrls(index, index - 1)
+                                                        offsetY += threshold
+                                                    }
+                                                }
+                                            )
+                                        }
                                         .padding(horizontal = AppSpacing.sm, vertical = AppSpacing.sm),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
@@ -281,6 +401,14 @@ fun DownloaderScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(AppSpacing.xs)
                                     ) {
+                                        if (!isPinned) {
+                                            Icon(
+                                                imageVector = Icons.Default.DragHandle,
+                                                contentDescription = "Sürükle",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                                modifier = Modifier.padding(end = 4.dp).size(20.dp)
+                                            )
+                                        }
                                         Box(
                                             modifier = Modifier
                                                 .size(10.dp)
@@ -317,6 +445,7 @@ fun DownloaderScreen(
                     }
                 }
                 2 -> { // TAB 2: HISTORY RECORD LIST
+                    val formatter = remember { java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault()) }
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(AppSpacing.md),
@@ -376,7 +505,6 @@ fun DownloaderScreen(
                         } else {
                             items(state.historyRecords.size) { index ->
                                 val record = state.historyRecords[index]
-                                val formatter = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault())
                                 val recordDate: java.util.Date = java.util.Date(record.downloadedAt)
                                 val dateStr = formatter.format(recordDate)
                                 
@@ -386,74 +514,121 @@ fun DownloaderScreen(
                                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)),
                                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
                                 ) {
-                                    Column(modifier = Modifier.padding(AppSpacing.md), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.Top
-                                        ) {
-                                            Text(
-                                                text = record.title,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis,
-                                                modifier = Modifier.weight(1f).padding(end = AppSpacing.sm)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(AppSpacing.md),
+                                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.md),
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        if (!record.thumbnailPath.isNullOrBlank() && java.io.File(record.thumbnailPath).exists()) {
+                                            val isWaveform = record.thumbnailPath.contains("waveform_")
+                                            val imageWidth = 100.dp
+                                            val imageHeight = if (isWaveform) 19.dp else 56.dp
+                                            val imageScale = if (isWaveform) ContentScale.FillBounds else ContentScale.Crop
+                                            AsyncImage(
+                                                model = java.io.File(record.thumbnailPath),
+                                                contentDescription = "Thumbnail",
+                                                modifier = Modifier
+                                                    .width(imageWidth)
+                                                    .height(imageHeight)
+                                                    .clip(RoundedCornerShape(if (isWaveform) 4.dp else 8.dp)),
+                                                contentScale = imageScale
                                             )
+                                        } else {
                                             Box(
                                                 modifier = Modifier
-                                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
-                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    .width(100.dp)
+                                                    .height(56.dp)
+                                                    .background(
+                                                        brush = Brush.linearGradient(
+                                                            colors = listOf(
+                                                                MaterialTheme.colorScheme.surfaceVariant,
+                                                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                                            )
+                                                        ),
+                                                        shape = RoundedCornerShape(8.dp)
+                                                    ),
+                                                contentAlignment = Alignment.Center
                                             ) {
-                                                Text(
-                                                    text = record.format.uppercase(),
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.primary
+                                                Icon(
+                                                    imageVector = Icons.Default.PlayCircle,
+                                                    contentDescription = "No Thumbnail",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                                                 )
                                             }
                                         }
-                                        Text(
-                                            text = record.url,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
+
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
-                                            Text(
-                                                text = dateStr,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                            )
-                                            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.xs)) {
-                                                TextButton(
-                                                    onClick = {
-                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
-                                                        val clip = android.content.ClipData.newPlainText("Copied URL", record.url)
-                                                        clipboard?.setPrimaryClip(clip)
-                                                    },
-                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.Top
+                                            ) {
+                                                Text(
+                                                    text = record.title,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.weight(1f).padding(end = AppSpacing.sm)
+                                                )
+                                                Box(
+                                                    modifier = Modifier
+                                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
                                                 ) {
-                                                    Text(Translations.get("share_path", lang), style = MaterialTheme.typography.labelSmall)
+                                                    Text(
+                                                        text = record.format.uppercase(),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
                                                 }
-                                                TextButton(
-                                                    onClick = {
-                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                        val intent = Intent(Intent.ACTION_SEND).apply {
-                                                            type = "text/plain"
-                                                            putExtra(Intent.EXTRA_SUBJECT, record.title)
-                                                            putExtra(Intent.EXTRA_TEXT, "${record.title}\n${record.url}")
-                                                        }
-                                                        context.startActivity(Intent.createChooser(intent, "Share media link"))
-                                                    },
-                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                                ) {
-                                                    Text(Translations.get("share_file", lang), style = MaterialTheme.typography.labelSmall)
+                                            }
+                                            Text(
+                                                text = record.url,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = dateStr,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                                )
+                                                Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.xs)) {
+                                                    TextButton(
+                                                        onClick = {
+                                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                                                            val clip = android.content.ClipData.newPlainText("Copied URL", record.url)
+                                                            clipboard?.setPrimaryClip(clip)
+                                                        },
+                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                                    ) {
+                                                        Text(Translations.get("share_path", lang), style = MaterialTheme.typography.labelSmall)
+                                                    }
+                                                    TextButton(
+                                                        onClick = {
+                                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                                                type = "text/plain"
+                                                                putExtra(Intent.EXTRA_SUBJECT, record.title)
+                                                                putExtra(Intent.EXTRA_TEXT, "${record.title}\n${record.url}")
+                                                            }
+                                                            context.startActivity(Intent.createChooser(intent, "Share media link"))
+                                                        },
+                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                                    ) {
+                                                        Text(Translations.get("share_file", lang), style = MaterialTheme.typography.labelSmall)
+                                                    }
                                                 }
                                             }
                                         }
@@ -606,10 +781,14 @@ fun DownloaderScreen(
                         Text(Translations.get("clear_log_btn", lang))
                     }
                 }
+                val scrollState = rememberScrollState()
+                LaunchedEffect(state.logs) {
+                    scrollState.animateScrollTo(scrollState.maxValue)
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = AppSpacing.lg * 7 + AppSpacing.sm)
+                        .heightIn(min = AppSpacing.lg * 7 + AppSpacing.sm, max = 400.dp)
                         .background(
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
                             shape = RoundedCornerShape(AppRadius.md),
@@ -619,6 +798,7 @@ fun DownloaderScreen(
                             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
                             RoundedCornerShape(AppRadius.md)
                         )
+                        .verticalScroll(scrollState)
                         .padding(AppSpacing.sm),
                 ) {
                     Text(
@@ -626,6 +806,52 @@ fun DownloaderScreen(
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                }
+            }
+        }
+    }
+    }
+
+    activePickerData?.let { data ->
+        ModalBottomSheet(
+            onDismissRequest = { activePickerData = null },
+            containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.95f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(bottom = AppSpacing.lg)
+            ) {
+                Text(
+                    text = data.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = AppSpacing.md, vertical = AppSpacing.sm)
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                
+                LazyColumn {
+                    items(data.options.size) { index ->
+                        val option = data.options[index]
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    data.onSelect(option)
+                                    activePickerData = null
+                                }
+                                .padding(horizontal = AppSpacing.md, vertical = AppSpacing.md),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = option,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -716,6 +942,25 @@ private fun HeaderCard(
                             }
                         }
                     }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (lang == "tr") "Kompakt Arayüz" else if (lang == "es") "Interfaz Compacta" else "Compact Interface",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Switch(
+                        checked = state.compactMode,
+                        onCheckedChange = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            viewModel.toggleCompactMode()
+                        }
+                    )
                 }
             }
             Text(
@@ -846,6 +1091,40 @@ private fun SourceSection(
             },
         )
 
+        Spacer(modifier = Modifier.height(AppSpacing.xs))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.sm)
+        ) {
+            Button(
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.startDownload()
+                },
+                modifier = Modifier.weight(1f).heightIn(min = 40.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = AccentIndigo)
+            ) {
+                Text(
+                    text = if (lang == "tr") "📥 Hemen İndir" else if (lang == "es") "📥 Descargar" else "📥 Download Now",
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+
+            Button(
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.addToQueueWithoutStarting()
+                },
+                modifier = Modifier.weight(1f).heightIn(min = 40.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+            ) {
+                Text(
+                    text = if (lang == "tr") "➕ Sıraya Ekle" else if (lang == "es") "➕ Añadir a Cola" else "➕ Add to Queue",
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+        }
+
         AnimatedVisibility(visible = state.previewTitle.isNotBlank()) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -873,6 +1152,21 @@ private fun SourceSection(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                }
+                // Channel Rule Button
+                if (viewModel.getPreviewChannelId() != null) {
+                    TextButton(
+                        onClick = {
+                            val chId = viewModel.getPreviewChannelId() ?: return@TextButton
+                            val chName = viewModel.getPreviewChannelName()
+                            viewModel.saveChannelRule(chId, chName)
+                        }
+                    ) {
+                        Text(
+                            text = "\uD83D\uDCCC " + Translations.get("btn_create_channel_rule", lang),
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
                 }
             }
         }
@@ -1193,7 +1487,7 @@ private fun AdvancedSection(
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            val tabs = listOf("tab_codecs", "tab_limits", "tab_flags", "sec_trimming")
+            val tabs = listOf("tab_codecs", "tab_limits", "tab_flags", "sec_trimming", "tab_scheduling")
             tabs.forEachIndexed { index, tabKey ->
                 val selected = activeTab == index
                 Box(
@@ -1340,6 +1634,40 @@ private fun AdvancedSection(
                     checked = state.youtube403Fallback,
                     onCheckedChange = viewModel::updateYoutube403Fallback,
                 )
+                
+                val folderOrgKeys = listOf("None", "Channel", "Year", "Format", "Channel_Year")
+                val folderOrgOptions = folderOrgKeys.map { key ->
+                    when (key) {
+                        "None" -> Translations.get("folder_org_none", lang)
+                        "Channel" -> Translations.get("folder_org_channel", lang)
+                        "Year" -> Translations.get("folder_org_year", lang)
+                        "Format" -> Translations.get("folder_org_format", lang)
+                        "Channel_Year" -> Translations.get("folder_org_channel_year", lang)
+                        else -> key
+                    }
+                }
+                val currentFolderOrgText = when (state.folderOrg) {
+                    "None" -> Translations.get("folder_org_none", lang)
+                    "Channel" -> Translations.get("folder_org_channel", lang)
+                    "Year" -> Translations.get("folder_org_year", lang)
+                    "Format" -> Translations.get("folder_org_format", lang)
+                    "Channel_Year" -> Translations.get("folder_org_channel_year", lang)
+                    else -> Translations.get("folder_org_none", lang)
+                }
+
+                androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(AppSpacing.sm))
+                OptionPicker(
+                    label = Translations.get("lbl_folder_org", lang),
+                    selected = currentFolderOrgText,
+                    options = folderOrgOptions,
+                    enabled = true,
+                    onSelect = { selectedText ->
+                        val idx = folderOrgOptions.indexOf(selectedText)
+                        if (idx >= 0) {
+                            viewModel.updateFolderOrg(folderOrgKeys[idx])
+                        }
+                    }
+                )
             }
             3 -> { // Video Trimming section
                 ToggleRow(
@@ -1360,6 +1688,28 @@ private fun AdvancedSection(
                         value = state.clipEnd,
                         placeholder = "00:00",
                         onValueChange = viewModel::updateClipEnd,
+                    )
+                }
+            }
+            4 -> { // Network & Scheduler Tab
+                ToggleRow(
+                    text = Translations.get("lbl_wifi_only", lang),
+                    helper = Translations.get("lbl_wifi_only_desc", lang),
+                    checked = state.wifiOnly,
+                    onCheckedChange = viewModel::updateWifiOnly,
+                )
+                ToggleRow(
+                    text = Translations.get("lbl_schedule_enable", lang),
+                    helper = Translations.get("lbl_schedule_desc", lang),
+                    checked = state.schedulerEnabled,
+                    onCheckedChange = viewModel::updateSchedulerEnabled,
+                )
+                if (state.schedulerEnabled) {
+                    LabeledTextField(
+                        label = Translations.get("lbl_schedule_time", lang),
+                        value = state.schedulerTime,
+                        placeholder = "03:00",
+                        onValueChange = viewModel::updateSchedulerTime,
                     )
                 }
             }
@@ -1431,6 +1781,7 @@ private fun StickyDownloadBar(
     state: DownloaderUiState,
     progress: Float,
     lang: String,
+    viewModel: DownloaderViewModel,
     onPrimaryAction: () -> Unit,
     onLogClick: () -> Unit,
 ) {
@@ -1460,15 +1811,33 @@ private fun StickyDownloadBar(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(AppSpacing.xs / 4),
                 ) {
-                    Text(
-                        text = Translations.get(state.statusLabel(), lang),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = if (state.errorText != null) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.primary
-                        },
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = Translations.get(state.statusLabel(), lang),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (state.errorText != null) {
+                                MaterialTheme.colorScheme.error
+                            } else if (!state.isRunning && state.progress >= 1f) {
+                                AccentGreen
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
+                        )
+                        AnimatedVisibility(
+                            visible = !state.isRunning && state.progress >= 1f,
+                            enter = androidx.compose.animation.expandHorizontally() + androidx.compose.animation.fadeIn(),
+                            exit = androidx.compose.animation.shrinkHorizontally() + androidx.compose.animation.fadeOut()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = "Done",
+                                tint = AccentGreen,
+                                modifier = Modifier.padding(start = 6.dp).size(18.dp)
+                            )
+                        }
+                    }
                     Text(
                         text = state.progressMeta(lang),
                         style = MaterialTheme.typography.bodySmall,
@@ -1501,15 +1870,93 @@ private fun StickyDownloadBar(
             }
 
             if (state.isRunning || state.progress > 0f) {
-                LinearProgressIndicator(
-                    progress = { progress },
+                val cf = state.concurrentFragments.toIntOrNull() ?: 1
+                SegmentedProgressBar(
+                    progress = state.progress,
+                    segmentsCount = cf,
+                    isRunning = state.isRunning,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(6.dp),
-                    color = AccentCyan,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        .height(8.dp)
                 )
             }
+
+            // Live Speed Sparkline Graph
+            if (state.isRunning) {
+                val taskStateForGraph = viewModel.activeTaskState.collectAsState()
+                SpeedSparkline(
+                    taskState = taskStateForGraph,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpeedSparkline(
+    taskState: State<com.baynuman.ytdownloader.data.ActiveTaskState>,
+    modifier: Modifier = Modifier
+) {
+    val accentColor = AccentCyan
+    val gridColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+
+    Canvas(modifier = modifier
+        .fillMaxWidth()
+        .height(48.dp)
+        .clip(RoundedCornerShape(8.dp))
+        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.3f))
+    ) {
+        // DrawPhase isolation: read state ONLY inside draw lambda
+        val state = taskState.value
+        val history = state.speedHistory
+        val writeIdx = state.speedWriteIdx
+
+        // Linearize circular buffer from write pointer
+        val ordered = if (writeIdx < history.size) {
+            history.subList(writeIdx, history.size) + history.subList(0, writeIdx)
+        } else {
+            history
+        }
+        val maxVal = (ordered.maxOrNull() ?: 0f).coerceAtLeast(0.01f)
+
+        // Grid reference lines (25%, 50%, 75%)
+        for (i in 1..3) {
+            val y = size.height * (1f - i / 4f)
+            drawLine(
+                color = gridColor,
+                start = Offset(0f, y),
+                end = Offset(size.width, y),
+                strokeWidth = 1f,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f))
+            )
+        }
+
+        // Speed line path
+        if (ordered.size >= 2) {
+            val linePath = Path()
+            ordered.forEachIndexed { idx, value ->
+                val x = (idx.toFloat() / (ordered.size - 1).coerceAtLeast(1).toFloat()) * size.width
+                val y = size.height - (value / maxVal) * (size.height - 4f)
+                if (idx == 0) linePath.moveTo(x, y) else linePath.lineTo(x, y)
+            }
+            drawPath(
+                path = linePath,
+                color = accentColor,
+                style = Stroke(
+                    width = 2.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+            )
+
+            // Fill area beneath the line
+            val fillPath = Path().apply {
+                addPath(linePath)
+                lineTo(size.width, size.height)
+                lineTo(0f, size.height)
+                close()
+            }
+            drawPath(fillPath, accentColor.copy(alpha = 0.08f))
         }
     }
 }
@@ -1657,7 +2104,6 @@ private fun ToggleRow(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun OptionPicker(
     label: String,
@@ -1666,8 +2112,8 @@ private fun OptionPicker(
     enabled: Boolean = true,
     onSelect: (String) -> Unit,
 ) {
-    var showBottomSheet by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
+    val showPicker = LocalShowPicker.current
 
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.xs - AppSpacing.xs / 4)) {
         Text(
@@ -1680,7 +2126,7 @@ private fun OptionPicker(
                 onClick = {
                     if (enabled) {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        showBottomSheet = true
+                        showPicker(PickerData(title = label, options = options, onSelect = onSelect))
                     }
                 },
                 modifier = Modifier
@@ -1702,52 +2148,6 @@ private fun OptionPicker(
                         imageVector = Icons.Outlined.ArrowDropDown,
                         contentDescription = null,
                     )
-                }
-            }
-
-            if (showBottomSheet && enabled) {
-                ModalBottomSheet(
-                    onDismissRequest = { showBottomSheet = false },
-                    containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.95f)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .padding(bottom = AppSpacing.lg)
-                    ) {
-                        Text(
-                            text = label,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = AppSpacing.md, vertical = AppSpacing.sm)
-                        )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                        
-                        LazyColumn {
-                            items(options.size) { index ->
-                                val option = options[index]
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            onSelect(option)
-                                            showBottomSheet = false
-                                        }
-                                        .padding(horizontal = AppSpacing.md, vertical = AppSpacing.md),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = option,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = if (option == selected) MaterialTheme.colorScheme.primary 
-                                                else MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -1809,44 +2209,126 @@ private fun DownloaderUiState.progressMeta(lang: String): String {
 }
 
 private fun openDownloadFolder(context: android.content.Context, outputDir: String) {
-    try {
-        val normalized = outputDir.replace('\\', '/')
-        val isDownloadDir = normalized.contains("/Download", ignoreCase = true)
-        
-        val uri = if (isDownloadDir) {
-            android.net.Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADownload")
-        } else {
-            android.net.Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADocuments")
-        }
-        
-        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "vnd.android.document/directory")
-            flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-        }
-        context.startActivity(intent)
-    } catch (e: Exception) {
-        try {
-            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+    val normalized = outputDir.replace('\\', '/')
+    val isDownloadDir = normalized.contains("/Download", ignoreCase = true)
+    
+    val primaryUri = if (isDownloadDir) {
+        android.net.Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADownload")
+    } else {
+        android.net.Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADocuments")
+    }
+
+    val strategies = listOf(
+        {
+            android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                setDataAndType(primaryUri, "vnd.android.document/directory")
+                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            }
+        },
+        {
+            android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
                 setDataAndType(android.net.Uri.parse("content://com.android.providers.downloads.documents/document/downloads"), "vnd.android.document/directory")
                 flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
             }
+        },
+        {
+            android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                setDataAndType(android.net.Uri.parse("content://media/external/file"), "vnd.android.document/directory")
+                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+        },
+        {
+            android.content.Intent(android.content.Intent.ACTION_GET_CONTENT).apply {
+                type = "*/*"
+                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+        }
+    )
+
+    for (strategy in strategies) {
+        try {
+            val intent = strategy()
             context.startActivity(intent)
-        } catch (e2: Exception) {
-            try {
-                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                    setDataAndType(android.net.Uri.parse("content://media/external/file"), "vnd.android.document/directory")
-                    flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-                context.startActivity(intent)
-            } catch (e3: Exception) {
-                try {
-                    val intent = android.content.Intent(android.content.Intent.ACTION_GET_CONTENT).apply {
-                        type = "*/*"
-                        flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+            return // Success!
+        } catch (e: Exception) {
+            android.util.Log.d("DownloaderScreen", "openDownloadFolder strategy failed", e)
+        }
+    }
+    
+    android.widget.Toast.makeText(context, "Klasor acilamadi", android.widget.Toast.LENGTH_LONG).show()
+}
+
+@Composable
+fun SegmentedProgressBar(
+    progress: Float,
+    segmentsCount: Int,
+    isRunning: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val isCompleted = !isRunning && progress >= 1f
+    val barColor by animateColorAsState(
+        targetValue = if (isCompleted) AccentGreen else AccentCyan,
+        animationSpec = tween(durationMillis = 800),
+        label = "progressBarColor"
+    )
+    
+    val trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+
+    Canvas(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(8.dp)
+            .clip(RoundedCornerShape(4.dp))
+    ) {
+        val width = size.width
+        val height = size.height
+
+        if (segmentsCount <= 1) {
+            drawRect(
+                color = trackColor,
+                topLeft = Offset.Zero,
+                size = size
+            )
+            val fillWidth = width * progress
+            if (fillWidth > 0f) {
+                drawRect(
+                    color = barColor,
+                    topLeft = Offset.Zero,
+                    size = Size(fillWidth, height)
+                )
+            }
+        } else {
+            val gap = 4.dp.toPx()
+            val segWidth = (width - (segmentsCount - 1) * gap) / segmentsCount
+
+            for (i in 0 until segmentsCount) {
+                val segProgress = ((progress - (i.toFloat() / segmentsCount)) * segmentsCount).coerceIn(0f, 1f)
+                val x0 = i * (segWidth + gap)
+                
+                drawRect(
+                    color = trackColor,
+                    topLeft = Offset(x0, 0f),
+                    size = Size(segWidth, height)
+                )
+
+                if (segProgress > 0f) {
+                    val filledW = segWidth * segProgress
+                    val segColor = if (isCompleted) {
+                        AccentGreen
+                    } else {
+                        when (i % 4) {
+                            0 -> AccentCyan
+                            1 -> AccentIndigo
+                            2 -> Color(0xFF8B5CF6)
+                            3 -> Color(0xFFEC4899)
+                            else -> AccentCyan
+                        }
                     }
-                    context.startActivity(intent)
-                } catch (e4: Exception) {
-                    android.widget.Toast.makeText(context, "Klasor acilamadi", android.widget.Toast.LENGTH_LONG).show()
+                    drawRect(
+                        color = segColor,
+                        topLeft = Offset(x0, 0f),
+                        size = Size(filledW, height)
+                    )
                 }
             }
         }
