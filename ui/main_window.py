@@ -546,7 +546,7 @@ class MainWindow(ctk.CTk):
         # Refresh current profile preview hint
         pass
 
-    # ========    def extract_video_id(self, url: str) -> str:
+    def extract_video_id(self, url: str) -> str:
         patterns = [
             r"(?:v=|\/v\/|embed\/|shorts\/|youtu\.be\/|\/embed\/|\/shorts\/)([a-zA-Z0-9_-]{11})",
             r"(?:\/shorts\/|youtu\.be\/|v\/|embed\/)([a-zA-Z0-9_-]{11})"
@@ -558,6 +558,14 @@ class MainWindow(ctk.CTk):
         return ""
 
     def _add_to_queue(self) -> None:
+        # Synchronize app_state.url with the UI before queueing to avoid empty/stale values
+        if self.url_panel.batch_mode_var.get():
+            lines = self.url_panel.url_textbox.get("1.0", "end-1c").splitlines()
+            self.app_state.batch_urls = [l.strip() for l in lines if l.strip()]
+            self.app_state.url = self.app_state.batch_urls[0] if self.app_state.batch_urls else ""
+        else:
+            self.app_state.url = self.url_panel.url_entry.get().strip()
+
         url = self.app_state.url.strip()
         if not url:
             messagebox.showwarning(TRANSLATIONS[self.app_state.current_lang]["lbl_dialog_warning_title"], TRANSLATIONS[self.app_state.current_lang]["lbl_dialog_warning_url"])
@@ -846,6 +854,14 @@ class MainWindow(ctk.CTk):
         if self.app_state.is_executor_running:
             messagebox.showinfo(TRANSLATIONS[self.app_state.current_lang]["lbl_dialog_info_title"], TRANSLATIONS[self.app_state.current_lang]["lbl_dialog_info_running"])
             return
+
+        # Synchronize app_state.url with the UI before starting to avoid empty/stale values
+        if self.url_panel.batch_mode_var.get():
+            lines = self.url_panel.url_textbox.get("1.0", "end-1c").splitlines()
+            self.app_state.batch_urls = [l.strip() for l in lines if l.strip()]
+            self.app_state.url = self.app_state.batch_urls[0] if self.app_state.batch_urls else ""
+        else:
+            self.app_state.url = self.url_panel.url_entry.get().strip()
 
         # Auto queue URL input if queue list empty
         if not self.app_state.queue_list:

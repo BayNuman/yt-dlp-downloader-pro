@@ -195,13 +195,13 @@ class UrlPanel(ctk.CTkFrame):
         self.app_state.is_batch_mode = is_batch
         if is_batch:
             self.url_entry.grid_remove()
-            self.url_textbox.grid()
+            self.url_textbox.grid(row=0, column=0, sticky="ew")
             self.url_textbox.delete("1.0", "end")
             self.url_textbox.insert("1.0", self.url_entry.get())
             self._on_textbox_change()
         else:
             self.url_textbox.grid_remove()
-            self.url_entry.grid()
+            self.url_entry.grid(row=0, column=0, sticky="ew")
             lines = self.url_textbox.get("1.0", "end-1c").splitlines()
             first_line = lines[0] if (lines and lines[0].strip()) else ""
             self.url_entry.delete(0, "end")
