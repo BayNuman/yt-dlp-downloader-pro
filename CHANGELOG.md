@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] — 2026-05-27
+
+### 🏗️ Second Audit Pass — Critical Bug Fixes, Security Hardening & Performance
+
+Targeted follow-up to the v1.1.0 architecture overhaul. Resolved 12 additional items spanning critical runtime crashes, security vulnerabilities, and IPC correctness issues on both platforms.
+
+#### 🔴 Critical Bug Fixes
+- **Desktop:** Fixed missing `import time` in `core/downloader.py` — prevented startup crash
+- **Desktop:** Fixed `cancel_event` scope — switched from global to per-task `task.cancel_event` in `run_queue_executor`
+- **Desktop:** Added `state._lock` guard around all `queue_list` mutations across `downloader.py` and `main_window.py` — eliminated data races
+- **Desktop:** Added subscriptability guard in `_process_macro_clips` for `macro_clips_data` — prevented `TypeError` on malformed clip data
+- **Desktop:** Capped `ui_queue` at `maxsize=500` and introduced `safe_put_ui()` with log shedding — prevents memory growth on long downloads
+- **Desktop:** Added `TaskStatus.PAUSED` enum value with localized labels in `ui/theme.py`
+
+#### 🟠 Android Architecture Fixes
+- **Android (A1):** Introduced `DownloadRepository` singleton — all IPC between `DownloaderViewModel` and `DownloadService` now flows through `StateFlow`/`SharedFlow` instead of companion object mutable statics
+- **Android (A1):** Added `DownloadWorker.kt` — WorkManager wrapper for download resilience across process death
+- **Android (B1):** Added `@Query UPDATE thumbnailPath` in `DownloadRecordDao`; retry block in `DownloadService` for thumbnail persistence
+- **Android (B3):** Replaced unbounded log list with `ArrayDeque(200)` ring buffer in `DownloaderViewModel` — eliminates OOM on large playlists
+- **Android (B5):** Refactored `openDownloadFolder` from nested try/catch Christmas tree to prioritized strategy list pattern
+- **Android:** Added `ChannelRuleEntity` + `ChannelRuleDao` for per-channel download rules in Room database
+
+#### 🔒 Security Improvements
+- **Android (S2):** URL domain allowlist gateway in `MainActivity` — blocks malicious deep-link injection
+- **Android (S3):** Force HTTPS in `downloadAndCompressThumbnail` — prevents HTTP downgrade attacks
+- **Desktop:** Command argument whitelist in `core/command_builder.py` — sanitizes yt-dlp flag injection
+- **Desktop:** Attr proxy hardening in `core/app_state.py` — prevents arbitrary attribute writes
+
+#### 🎨 UI/UX Polish
+- **Desktop:** Separate `sponsor_overlay_canvas` rendered under timeline slider in `preview_panel.py`
+- **Desktop:** Greedy-merge edge-case handling in `clean_sponsors` for accurate SponsorBlock visualization
+- **Desktop:** Fixed waveform thumbnail aspect ratio (80×15 target) in `queue_panel.py`
+- **Android (P1):** Hoisted `ModalBottomSheet` to single shared instance in `DownloaderScreen` — eliminates per-item sheet leak
+- **Android:** Cached `SimpleDateFormat` in history `LazyColumn` items — removes per-recomposition allocation
+- **Android (SB):** Async `fetchSponsorBlockSegments` in `applyPreview` — non-blocking UI thread
+
+---
+
 ## [1.1.0] — 2026-05-26
 
 ### 🏗️ Architecture Overhaul — 48 Audit Items Resolved
