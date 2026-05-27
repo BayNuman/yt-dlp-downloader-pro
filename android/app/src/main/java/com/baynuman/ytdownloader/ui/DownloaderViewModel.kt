@@ -1175,16 +1175,31 @@ class DownloaderViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private fun extractYoutubeVideoId(url: String): String? {
-        val patterns = listOf(
-            Regex("(?:youtube\\.com/(?:[^/]+/.+/|(?:v|e(?:mbed)?)|watch|shorts)\\?v=|youtu\\.be/|youtube\\.com/embed/|youtube\\.com/v/|youtube\\.com/shorts/)([^\"&?/ ]{11})"),
-            Regex("(?<=embed/|v/|watch\\?v=|ytscreeningroom\\?v=|fe\\/videos\\/|youtu\\.be\\/|shorts\\/|user\\/\\S+\\/\\S+\\/)([a-zA-Z0-9_-]{11})")
-        )
-        for (pattern in patterns) {
-            val match = pattern.find(url)
-            if (match != null) {
-                return match.groupValues[1]
+        val cleanedUrl = url.trim()
+        
+        // 1. Standard watch URL query parameter (?v=... or &v=...)
+        val queryPattern = Regex("[?&]v=([a-zA-Z0-9_-]{11})")
+        queryPattern.find(cleanedUrl)?.let { return it.groupValues[1] }
+        
+        // 2. Short URL (youtu.be/...)
+        val shortPattern = Regex("youtu\\.be/([a-zA-Z0-9_-]{11})")
+        shortPattern.find(cleanedUrl)?.let { return it.groupValues[1] }
+        
+        // 3. Common path-based patterns (embed/..., v/..., shorts/...)
+        val pathPattern = Regex("(?:embed|v|shorts)/([a-zA-Z0-9_-]{11})")
+        pathPattern.find(cleanedUrl)?.let { return it.groupValues[1] }
+        
+        // 4. Custom lookbehind fallback without using regular expression lookbehinds
+        if (cleanedUrl.contains("youtube") || cleanedUrl.contains("youtu.be")) {
+            val generalPattern = Regex("(?:/|=)([a-zA-Z0-9_-]{11})(?:[?&/]|$)")
+            generalPattern.findAll(cleanedUrl).forEach { match ->
+                val id = match.groupValues[1]
+                if (id.length == 11) {
+                    return id
+                }
             }
         }
+        
         return null
     }
 

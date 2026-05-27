@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Targeted follow-up to the v1.1.0 architecture overhaul. Resolved 12 additional items spanning critical runtime crashes, security vulnerabilities, and IPC correctness issues on both platforms.
 
 #### 🔴 Critical Bug Fixes
+- **Android:** Fixed `PatternSyntaxException` in `extractYoutubeVideoId` — replaced unbounded look-behind pattern (`user/\S+/\S+/`) with a safe look-behind-free parsing approach that prevents crash on URL input
 - **Desktop:** Fixed missing `import time` in `core/downloader.py` — prevented startup crash
 - **Desktop:** Fixed `cancel_event` scope — switched from global to per-task `task.cancel_event` in `run_queue_executor`
 - **Desktop:** Added `state._lock` guard around all `queue_list` mutations across `downloader.py` and `main_window.py` — eliminated data races
