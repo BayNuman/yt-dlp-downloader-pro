@@ -205,8 +205,8 @@ def _do_delete_download(conn, item_id: str):
 def add_download_record(item_id: str, title: str, url: str, format_desc: str, file_path: str, status: str, file_size: int = 0, duration: int = 0, thumbnail_path: str = None):
     _db_writer.submit(_do_add_download_record, item_id, title, url, format_desc, file_path, status, file_size, duration, thumbnail_path=thumbnail_path)
 
-def update_download_status(item_id: str, status: str, file_path: str = None, file_size: int = None, duration: int = None):
-    _db_writer.submit(_do_update_download_status, item_id, status, file_path=file_path, file_size=file_size, duration=duration)
+def update_download_status(item_id: str, status: str, file_path: str = None, file_size: int = None, duration: int = None, thumbnail_path: str = None):
+    _db_writer.submit(_do_update_download_status, item_id, status, file_path=file_path, file_size=file_size, duration=duration, thumbnail_path=thumbnail_path)
 
 def clear_all_downloads():
     _db_writer.submit(_do_clear_all_downloads)

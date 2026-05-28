@@ -44,9 +44,35 @@ class YtDlpRunner(
         cancelRequested = false
         activeSubprocess = null
 
-        val outputDir = File(request.outputDir)
-        if (!outputDir.exists()) {
-            outputDir.mkdirs()
+        var outputDir = File(request.outputDir)
+        
+        // Write permission self-healing pre-flight check (fixes Scoped Storage Errno 1 Operation not permitted)
+        var isWritable = false
+        try {
+            if (!outputDir.exists()) {
+                outputDir.mkdirs()
+            }
+            if (outputDir.exists() && outputDir.isDirectory) {
+                // Perform physical write test
+                val testFile = File(outputDir, ".write_test_${UUID.randomUUID()}")
+                if (testFile.createNewFile()) {
+                    testFile.delete()
+                    isWritable = true
+                }
+            }
+        } catch (e: Exception) {
+            isWritable = false
+        }
+
+        if (!isWritable) {
+            // Self-healing fallback to safe private external files directory where raw POSIX open() is ALWAYS permitted
+            val safeDir = appContext.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
+                ?.resolve("yt-downloads")
+                ?: appContext.filesDir.resolve("yt-downloads")
+            
+            safeDir.mkdirs()
+            onEvent(DownloadEvent.LogLine("[uyari] '${outputDir.absolutePath}' klasorune yazma izni yok (Scoped Storage engeli). Guvenli klasore yonlendiriliyor: '${safeDir.absolutePath}'\n"))
+            outputDir = safeDir
         }
 
         val normalizedRequest = request.copy(
@@ -560,7 +586,7 @@ class YtDlpRunner(
                     if (parsedPath != null) {
                         lastDownloadedFilePath = parsedPath
                     }
-                    if (safeLine.contains("HTTP Error 403: Forbidden")) {
+                    if (safeLine.contains("HTTP Error 403: Forbidden") || safeLine.contains("HTTP Error 429") || safeLine.contains("429")) {
                         sawHttp403 = true
                     }
                     if (safeLine.contains("older than 90 days", ignoreCase = true)) {
@@ -587,7 +613,7 @@ class YtDlpRunner(
                 if (parsedPath != null) {
                     lastDownloadedFilePath = parsedPath
                 }
-                if (line.contains("HTTP Error 403: Forbidden")) {
+                if (line.contains("HTTP Error 403: Forbidden") || line.contains("HTTP Error 429") || line.contains("429")) {
                     sawHttp403 = true
                 }
                 if (line.contains("older than 90 days", ignoreCase = true)) {
@@ -614,7 +640,7 @@ class YtDlpRunner(
         } catch (exc: YoutubeDLException) {
             val text = exc.message ?: "yt-dlp calistirilamadi"
             onEvent(DownloadEvent.LogLine("[hata] $text\n"))
-            if (text.contains("HTTP Error 403: Forbidden")) {
+            if (text.contains("HTTP Error 403: Forbidden") || text.contains("HTTP Error 429") || text.contains("429")) {
                 sawHttp403 = true
             }
             if (text.contains("older than 90 days", ignoreCase = true)) {

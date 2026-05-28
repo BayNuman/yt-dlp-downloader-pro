@@ -575,6 +575,12 @@ class MainWindow(ctk.CTk):
         # Gather active configurations from advanced panel
         item_cfg = self.advanced_panel.get_settings_dict()
 
+        # Dynamic filtering of non-task fields to match fields of the DownloadTask dataclass
+        import dataclasses
+        from core.app_state import DownloadTask
+        valid_task_fields = {f.name for f in dataclasses.fields(DownloadTask)}
+        item_cfg = {k: v for k, v in item_cfg.items() if k in valid_task_fields}
+
         # Headless Channel Rules Engine
         if item_cfg.get("options_source") == "Default" and self.app_state.current_video_info and not self.app_state.is_batch_mode:
             ch_id = self.app_state.current_video_info.get("channel_id")
@@ -1168,6 +1174,20 @@ class MainWindow(ctk.CTk):
         from core.updater import calculate_sha256
         
         def _run():
+            if getattr(sys, "frozen", False):
+                # Standard standalone build cannot perform inline pip upgrades
+                err_msg = (
+                    "Tekil taşınabilir sürümde otomatik güncelleme desteklenmemektedir. Lütfen GitHub üzerinden yeni sürümü indirin."
+                    if self.app_state.current_lang == "tr"
+                    else (
+                        "La actualización automática no está soportada en la versión portátil. ¡Por favor descargue la última versión desde GitHub!"
+                        if self.app_state.current_lang == "es"
+                        else "Self-updates are not supported in the standalone portable version. Please download the latest version from GitHub!"
+                    )
+                )
+                self.after(0, lambda: self._on_upgrade_complete(False, err_msg))
+                return
+
             creationflags = 0
             if sys.platform == "win32":
                 creationflags = subprocess.CREATE_NO_WINDOW

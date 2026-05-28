@@ -185,6 +185,10 @@ class AppState:
     saw_outdated_warning: bool = False
 
     def __post_init__(self):
+        # Auto-initialize central logging system
+        from core.logging_setup import setup_logging
+        setup_logging()
+
         self._lock = threading.RLock()
         try:
             load_app_preferences(self.preferences)

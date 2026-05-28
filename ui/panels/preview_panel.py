@@ -565,28 +565,6 @@ class PreviewPanel(ctk.CTkFrame):
         )
         self.btn_channel_rule.pack(side="left")
 
-    def update_channel_rule_button_text(self):
-        if not hasattr(self, "btn_channel_rule"):
-            return
-        lang = self.app_state.current_lang
-        from core.history import get_channel_rule
-        has_rule = False
-        if self.current_channel_id:
-            rule = get_channel_rule(self.current_channel_id)
-            if rule:
-                has_rule = True
-                
-        if has_rule:
-            txt = "✅ Kanal Kuralı Aktif (Düzenle)" if lang == "tr" else ("✅ Regla de Canal Activa (Editar)" if lang == "es" else "✅ Channel Rule Active (Edit)")
-        else:
-            txt = "📌 Bu Kanal İçin Kural Oluştur" if lang == "tr" else ("📌 Crear Regla Para Este Canal" if lang == "es" else "📌 Create Rule For This Channel")
-        self.btn_channel_rule.configure(text=txt)
-
-    def _on_channel_rule_clicked(self):
-        if self.on_create_channel_rule and self.current_channel_id:
-            self.on_create_channel_rule(self.current_channel_id, self.current_channel_name)
-            self.update_channel_rule_button_text()
-
         # Chapters Section Frame (Scrollable horizontal chapter bar)
         self.chapters_frame = ctk.CTkScrollableFrame(
             self,
@@ -678,6 +656,28 @@ class PreviewPanel(ctk.CTkFrame):
         self.btn_clean_sponsors.grid(row=0, column=1, padx=(4, 0), sticky="ew")
 
         self._on_clip_toggled() # Disable entry fields by default if checkbox off
+
+    def update_channel_rule_button_text(self):
+        if not hasattr(self, "btn_channel_rule"):
+            return
+        lang = self.app_state.current_lang
+        from core.history import get_channel_rule
+        has_rule = False
+        if self.current_channel_id:
+            rule = get_channel_rule(self.current_channel_id)
+            if rule:
+                has_rule = True
+                
+        if has_rule:
+            txt = "✅ Kanal Kuralı Aktif (Düzenle)" if lang == "tr" else ("✅ Regla de Canal Activa (Editar)" if lang == "es" else "✅ Channel Rule Active (Edit)")
+        else:
+            txt = "📌 Bu Kanal İçin Kural Oluştur" if lang == "tr" else ("📌 Crear Regla Para Este Canal" if lang == "es" else "📌 Create Rule For This Channel")
+        self.btn_channel_rule.configure(text=txt)
+
+    def _on_channel_rule_clicked(self):
+        if self.on_create_channel_rule and self.current_channel_id:
+            self.on_create_channel_rule(self.current_channel_id, self.current_channel_name)
+            self.update_channel_rule_button_text()
 
     def _on_clip_toggled(self):
         enabled = self.clip_enabled_var.get()

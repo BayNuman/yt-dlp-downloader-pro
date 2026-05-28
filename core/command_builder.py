@@ -139,7 +139,6 @@ def build_command(item, output_dir: str) -> list[str]:
     if video_info:
         try:
             # Create a temporary file inside our isolated scratch directory to write cached JSON metadata
-            from pathlib import Path
             scratch_path = Path.home() / ".yt-downloader-scratch"
             scratch_path.mkdir(parents=True, exist_ok=True)
             

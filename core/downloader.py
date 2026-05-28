@@ -8,6 +8,7 @@ import subprocess
 import ctypes
 import threading
 import queue
+import logging
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, wait
 
@@ -20,14 +21,23 @@ def prevent_sleep():
         try:
             ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
         except Exception as e:
-            print(f"[Sleep Prevention] Failed to prevent sleep: {e}")
+            logging.error(f"[Sleep Prevention] Failed to prevent sleep: {e}")
 
 def allow_sleep():
     if os.name == 'nt':
         try:
             ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
         except Exception as e:
-            print(f"[Sleep Prevention] Failed to restore sleep state: {e}")
+            logging.error(f"[Sleep Prevention] Failed to restore sleep state: {e}")
+
+def get_subprocess_encoding() -> str:
+    import locale
+    if os.name == 'nt':
+        try:
+            return locale.getpreferredencoding(False) or "utf-8"
+        except Exception:
+            return "utf-8"
+    return "utf-8"
 
 def safe_put_ui(ui_queue, item):
     try:
@@ -106,7 +116,7 @@ def generate_audio_waveform(task, input_file_path: str) -> str:
         if output_png.exists():
             return str(output_png)
     except Exception as e:
-        print(f"[warning] Waveform generation failed: {e}")
+        logging.error(f"[warning] Waveform generation failed: {e}")
     return None
 
 # Single-Threaded Background Waveform Generation Queue
@@ -120,7 +130,7 @@ def _waveform_worker():
             if png_path:
                 callback(png_path)
         except Exception as e:
-            print(f"[warning] Waveform worker error: {e}")
+            logging.error(f"[warning] Waveform worker error: {e}")
         finally:
             waveform_queue.task_done()
 
@@ -181,6 +191,8 @@ def run_command_stream(cmd: list[str], task: DownloadTask, state: AppState, ui_q
     )
     dest_re = re.compile(r"\[download\]\s+Destination:\s+(.+)")
     already_re = re.compile(r"\[download\]\s+(.+)\s+has already been downloaded")
+    merge_re = re.compile(r"\[Merger\]\s+Merging\s+formats\s+into\s+\"(.+?)\"")
+    post_re = re.compile(r"\[(ExtractAudio|RecodeVideo|Metadata)\]\s+(?:Destination:\s+|\w+\s+to\s+\")(.+?)\"?$")
 
     saw_http_403 = False
     saw_outdated_warning = False
@@ -195,7 +207,7 @@ def run_command_stream(cmd: list[str], task: DownloadTask, state: AppState, ui_q
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
-        encoding="utf-8",
+        encoding=get_subprocess_encoding(),
         errors="replace",
         bufsize=1,
         startupinfo=startupinfo,
@@ -240,6 +252,20 @@ def run_command_stream(cmd: list[str], task: DownloadTask, state: AppState, ui_q
             already_match = already_re.search(line)
             if already_match:
                 full_path = already_match.group(1).strip()
+                filename = Path(full_path).name
+                safe_put_ui(ui_queue, ("active_file", (task.id, filename)))
+                task._output_file = full_path
+
+            merge_match = merge_re.search(line)
+            if merge_match:
+                full_path = merge_match.group(1).strip()
+                filename = Path(full_path).name
+                safe_put_ui(ui_queue, ("active_file", (task.id, filename)))
+                task._output_file = full_path
+
+            post_match = post_re.search(line)
+            if post_match:
+                full_path = post_match.group(2).strip()
                 filename = Path(full_path).name
                 safe_put_ui(ui_queue, ("active_file", (task.id, filename)))
                 task._output_file = full_path
@@ -399,7 +425,7 @@ def _process_macro_clips(task, output_file, lang, ui_queue, cancel_event) -> str
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                encoding="utf-8",
+                encoding=get_subprocess_encoding(),
                 errors="replace",
                 startupinfo=startupinfo,
                 shell=False,
@@ -488,7 +514,7 @@ def _process_macro_clips(task, output_file, lang, ui_queue, cancel_event) -> str
                 stderr=subprocess.STDOUT,
                 startupinfo=startupinfo,
                 text=True,
-                encoding="utf-8",
+                encoding=get_subprocess_encoding(),
                 errors="replace"
             )
             
@@ -580,7 +606,7 @@ def _process_single_clip(task, output_file, lang, ui_queue, cancel_event) -> str
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            encoding="utf-8",
+            encoding=get_subprocess_encoding(),
             errors="replace",
             startupinfo=startupinfo,
             shell=False,
@@ -602,6 +628,54 @@ def _process_single_clip(task, output_file, lang, ui_queue, cancel_event) -> str
             return str(clean_output_path)
         except Exception:
             pass
+    return output_file
+
+def resolve_actual_file_path(output_file: str, url: str) -> str:
+    if not output_file:
+        return ""
+    if os.path.exists(output_file):
+        return output_file
+        
+    # If file doesn't exist directly (e.g., due to Windows CP1254 character set conversions or unicode replacement slashes like ⧸),
+    # let's find a file in the same directory that has the exact video ID in its name.
+    try:
+        path = Path(output_file)
+        parent = path.parent
+        if not parent.exists():
+            return output_file
+            
+        # Extract video ID from URL
+        video_id = ""
+        import re
+        patterns = [
+            r"(?:v=|\/v\/|embed\/|shorts\/|youtu\.be\/|\/embed\/|\/shorts\/)([a-zA-Z0-9_-]{11})",
+            r"(?:\/shorts\/|youtu\.be\/|v\/|embed\/)([a-zA-Z0-9_-]{11})"
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                video_id = match.group(1)
+                break
+                
+        if not video_id:
+            return output_file
+            
+        # Scan parent folder for files matching video_id
+        for child in parent.iterdir():
+            if child.is_file() and video_id in child.name:
+                # If extension matches, this is our file!
+                if child.suffix.lower() == path.suffix.lower():
+                    return str(child)
+                    
+        # Fallback: if exact suffix didn't match, return any file containing video_id that has a media suffix
+        MEDIA_SUFFIXES = {".mp4", ".mkv", ".webm", ".mp3", ".m4a", ".aac"}
+        for child in parent.iterdir():
+            if child.is_file() and video_id in child.name:
+                if child.suffix.lower() in MEDIA_SUFFIXES:
+                    return str(child)
+    except Exception:
+        pass
+        
     return output_file
 
 def _set_completed_status(task, output_file, lang, ui_queue):
@@ -673,6 +747,10 @@ def download_single_task(task: DownloadTask, state: AppState, ui_queue, cancel_e
 
         if code == 0:
             output_file = task._output_file
+            
+            # Resolve actual physical path (fixes Windows double-spaces and Unicode slashes ⧸ cp1254 mismatches)
+            output_file = resolve_actual_file_path(output_file, task.url)
+            
             if output_file and os.path.exists(output_file):
                 if task.macro_clips_data:
                     output_file = _process_macro_clips(task, output_file, lang, ui_queue, cancel_event)
@@ -754,7 +832,7 @@ def toggle_pause_task(task):
                 else:
                     ctypes.windll.ntdll.NtResumeProcess(proc._handle)
             except Exception as e:
-                print(f"[!] WinAPI Suspend/Resume error: {e}")
+                logging.error(f"[!] WinAPI Suspend/Resume error: {e}")
         else:
             import signal
             try:
@@ -763,4 +841,4 @@ def toggle_pause_task(task):
                 else:
                     os.kill(proc.pid, signal.SIGCONT)
             except Exception as e:
-                print(f"[!] POSIX Suspend/Resume error: {e}")
+                logging.error(f"[!] POSIX Suspend/Resume error: {e}")
