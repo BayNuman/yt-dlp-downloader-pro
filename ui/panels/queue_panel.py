@@ -160,13 +160,22 @@ class QueuePanel(ctk.CTkFrame):
         """High-performance direct in-memory widget text configuration."""
         if task_id in self.card_status_labels:
             lbl = self.card_status_labels[task_id]
-            lang = self.app_state.current_lang
-            active_str = TRANSLATIONS[lang].get("lbl_task_downloading", "Downloading")
-            lbl.configure(text=f"{active_str} ({percent:.1f}% - {speed})")
+            if lbl.winfo_exists():
+                try:
+                    lang = self.app_state.current_lang
+                    active_str = TRANSLATIONS[lang].get("lbl_task_downloading", "Downloading")
+                    lbl.configure(text=f"{active_str} ({percent:.1f}% - {speed})")
+                except Exception:
+                    pass
 
             # Update dot color to active indigo dynamically
             if task_id in self.card_dot_labels:
-                self.card_dot_labels[task_id].configure(text_color=THEME_ACCENT_INDIGO)
+                dot = self.card_dot_labels[task_id]
+                if dot.winfo_exists():
+                    try:
+                        dot.configure(text_color=THEME_ACCENT_INDIGO)
+                    except Exception:
+                        pass
 
     def _get_translated_status(self, item, lang: str) -> str:
         """Return localized status string using lbl_task_ keys from TRANSLATIONS."""
@@ -191,9 +200,19 @@ class QueuePanel(ctk.CTkFrame):
                     elif item.status_code == TaskStatus.PAUSED:
                         status_text = TRANSLATIONS[lang].get("lbl_task_paused", "Paused")
                     if item.id in self.card_status_labels:
-                        self.card_status_labels[item.id].configure(text=status_text)
+                        lbl = self.card_status_labels[item.id]
+                        if lbl.winfo_exists():
+                            try:
+                                lbl.configure(text=status_text)
+                            except Exception:
+                                pass
                     if item.id in self.card_dot_labels:
-                        self.card_dot_labels[item.id].configure(text_color=dot_color)
+                        dot = self.card_dot_labels[item.id]
+                        if dot.winfo_exists():
+                            try:
+                                dot.configure(text_color=dot_color)
+                            except Exception:
+                                pass
                 return
 
             # Composition changed — full rebuild required

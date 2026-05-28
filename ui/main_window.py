@@ -958,7 +958,17 @@ class MainWindow(ctk.CTk):
             subprocess.run(["xdg-open", str(path)])
 
     # ================== METRIC DRAINING & LIFECYCLE ==================
+    # ================== METRIC DRAINING & LIFECYCLE ==================
     def _drain_ui_queue(self) -> None:
+        try:
+            self._drain_ui_queue_impl()
+        except Exception as e:
+            import logging
+            logging.error(f"[UI Queue Drainer] Fatal error: {e}", exc_info=True)
+        finally:
+            self.after(50, self._drain_ui_queue)
+
+    def _drain_ui_queue_impl(self) -> None:
         processed = 0
         log_batch = []
         needs_progress_update = False
@@ -1064,8 +1074,6 @@ class MainWindow(ctk.CTk):
 
         if log_batch:
             self.progress_panel.append_log_batch(log_batch)
-
-        self.after(50, self._drain_ui_queue)
 
     def _show_toast(self, title: str, desc: str):
         from ui.components.toast import NotificationToast

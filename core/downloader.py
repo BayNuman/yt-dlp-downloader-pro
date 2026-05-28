@@ -103,8 +103,8 @@ def generate_audio_waveform(task, input_file_path: str) -> str:
         try:
             proc = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 startupinfo=startupinfo,
                 shell=False
             )
@@ -422,11 +422,8 @@ def _process_macro_clips(task, output_file, lang, ui_queue, cancel_event) -> str
         try:
             proc = subprocess.Popen(
                 ffmpeg_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding=get_subprocess_encoding(),
-                errors="replace",
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 startupinfo=startupinfo,
                 shell=False,
             )
@@ -603,11 +600,8 @@ def _process_single_clip(task, output_file, lang, ui_queue, cancel_event) -> str
     try:
         proc = subprocess.Popen(
             ffmpeg_cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding=get_subprocess_encoding(),
-            errors="replace",
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             startupinfo=startupinfo,
             shell=False,
         )
