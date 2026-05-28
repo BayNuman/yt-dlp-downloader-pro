@@ -224,6 +224,11 @@ def build_command(item, output_dir: str) -> list[str]:
     retries = str(safe_get(item, "retries", "")).strip()
     if retries:
         cmd.extend(["--retries", retries])
+    else:
+        cmd.extend(["--retries", "10"])
+
+    # Protect against infinite TCP socket hangs on unstable/throttled connections
+    cmd.extend(["--socket-timeout", "30"])
 
     concurrent_fragments = str(safe_get(item, "concurrent_fragments", "")).strip()
     if concurrent_fragments:
