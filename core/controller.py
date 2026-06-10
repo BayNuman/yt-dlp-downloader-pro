@@ -9,6 +9,8 @@ from pathlib import Path
 from core.app_state import AppState, DownloadTask, TaskStatus
 from core.services import fetch_video_metadata
 from core.clip import parse_time_to_seconds, format_seconds_to_mmss, decide_clip_strategy
+from core.history import find_completed_download_in_db, get_channel_rule
+from core.utils import extract_video_id
 
 class AppController:
     """
@@ -19,16 +21,7 @@ class AppController:
         self.state = state
         self._lock = threading.Lock()
 
-    def extract_video_id(self, url: str) -> str:
-        patterns = [
-            r"(?:v=|\/v\/|embed\/|shorts\/|youtu\.be\/|\/embed\/|\/shorts\/)([a-zA-Z0-9_-]{11})",
-            r"(?:\/shorts\/|youtu\.be\/|v\/|embed\/)([a-zA-Z0-9_-]{11})"
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, url)
-            if match:
-                return match.group(1)
-        return ""
+    # extract_video_id is now imported from core.utils
 
     def fetch_metadata_async(self, url: str, cookies_file: str, browser_cookies: str, scratch_dir: Path, app_data_dir: Path, on_success, on_error):
         """Dispatches video metadata extraction to a background thread and fires callbacks."""
@@ -53,7 +46,7 @@ class AppController:
         to detect if the video has already been queued or downloaded.
         Returns: (is_duplicate, title, format_description)
         """
-        video_id = self.extract_video_id(url)
+        video_id = extract_video_id(url)
         
         # Tier A: RAM check (Active queue)
         for task in self.state.queue_list:
@@ -61,7 +54,6 @@ class AppController:
                 return True, task.title, f"{task.mode} ({task.video_profile if task.mode == 'Video' else task.audio_quality})"
                 
         # Tier B: Database check
-        from core.history import find_completed_download_in_db
         format_desc = f"{item_cfg.get('mode', 'Video')} ({item_cfg.get('video_profile', 'Custom') if item_cfg.get('mode', 'Video') == 'Video' else item_cfg.get('audio_quality', 'Dengeli (192K)')})"
         record = find_completed_download_in_db(video_id, url, format_desc)
         if record:
@@ -95,7 +87,6 @@ class AppController:
         if base_cfg.get("options_source") == "Default" and self.state.current_video_info and not self.state.is_batch_mode:
             ch_id = self.state.current_video_info.get("channel_id")
             if ch_id:
-                from core.history import get_channel_rule
                 rule = get_channel_rule(ch_id)
                 if rule and rule.get("settings_dict"):
                     base_cfg.update(rule["settings_dict"])

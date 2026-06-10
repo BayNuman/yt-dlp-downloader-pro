@@ -82,6 +82,7 @@ def kill_all_active_subprocesses():
         active_subprocesses.clear()
 
 from core.waveform import enqueue_waveform_generation
+from core.utils import clean_empty_directories, extract_video_id
 
 def _on_waveform_done(task_id, png_path, ui_queue):
     update_download_status(task_id, "COMPLETED", thumbnail_path=png_path)
@@ -234,44 +235,7 @@ def wait_process_with_timeout(proc, timeout=120) -> int:
         proc.wait()  # sweep zombie process
         raise RuntimeError(f"Process timed out after {timeout} seconds")
 
-def clean_empty_directories(path_str: str, base_dir_str: str):
-    """
-    Recursively deletes empty parent directories up to base_dir_str.
-    Does not delete base_dir_str itself.
-    """
-    try:
-        if not path_str or not base_dir_str:
-            return
-        
-        path = Path(path_str).resolve()
-        base_dir = Path(base_dir_str).resolve()
-        
-        # If path is a file, take its parent folder
-        if path.is_file():
-            folder = path.parent
-        else:
-            folder = path
-            
-        # Traverse upwards from folder to base_dir (exclusive of base_dir)
-        while folder != base_dir and base_dir in folder.parents:
-            # Check if directory exists and is empty
-            if folder.exists() and folder.is_dir():
-                # Check if empty (no files or folders inside)
-                if not any(folder.iterdir()):
-                    try:
-                        folder.rmdir()
-                    except Exception as e:
-                        print(f"[Cleanup Hook] Failed to remove folder {folder}: {e}")
-                        break # stop if we cannot delete
-                else:
-                    # Folder is not empty, so we cannot delete it, and parents won't be empty either
-                    break
-            else:
-                break
-            # Go up one level
-            folder = folder.parent
-    except Exception as e:
-        print(f"[Cleanup Hook] Error in clean_empty_directories: {e}")
+# clean_empty_directories is now imported from core.utils
 
 def _handle_cancel(task, lang, ui_queue, base_dir=None):
     task.status_code = TaskStatus.CANCELLED
@@ -579,18 +543,7 @@ def resolve_actual_file_path(output_file: str, url: str) -> str:
             return output_file
             
         # Extract video ID from URL
-        video_id = ""
-        import re
-        patterns = [
-            r"(?:v=|\/v\/|embed\/|shorts\/|youtu\.be\/|\/embed\/|\/shorts\/)([a-zA-Z0-9_-]{11})",
-            r"(?:\/shorts\/|youtu\.be\/|v\/|embed\/)([a-zA-Z0-9_-]{11})"
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, url)
-            if match:
-                video_id = match.group(1)
-                break
-                
+        video_id = extract_video_id(url)
         if not video_id:
             return output_file
             

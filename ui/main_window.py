@@ -20,9 +20,10 @@ from PIL import Image, ImageTk
 # Core imports
 from core.app_state import AppState, TaskStatus, save_app_preferences
 from core.downloader import run_queue_executor, resolve_ffmpeg_path, kill_all_active_subprocesses
-from core.history import init_db, add_download_record, get_all_downloads, shutdown_db
+from core.history import init_db, add_download_record, get_all_downloads, shutdown_db, get_channel_rule
 from core.clip import decide_clip_strategy, parse_time_to_seconds, format_seconds_to_mmss
 from core.controller import AppController
+from core.profiles import EXPORT_PROFILES
 
 # UI imports
 from ui.theme import (
@@ -488,16 +489,7 @@ class MainWindow(ctk.CTk):
         # Refresh current profile preview hint
         pass
 
-    def extract_video_id(self, url: str) -> str:
-        patterns = [
-            r"(?:v=|\/v\/|embed\/|shorts\/|youtu\.be\/|\/embed\/|\/shorts\/)([a-zA-Z0-9_-]{11})",
-            r"(?:\/shorts\/|youtu\.be\/|v\/|embed\/)([a-zA-Z0-9_-]{11})"
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, url)
-            if match:
-                return match.group(1)
-        return ""
+    # extract_video_id is unused in MainWindow and now imported from core.utils where needed
 
     def _add_to_queue(self) -> None:
         # Synchronize app_state.url with the UI before queueing to avoid empty/stale values
@@ -540,7 +532,6 @@ class MainWindow(ctk.CTk):
 
         # 3. Validate export profile duration limits
         if item_cfg.get("clip_enabled") and not self.app_state.is_batch_mode:
-            from core.profiles import EXPORT_PROFILES
             multi_clips = self.preview_panel.get_multi_clips()
             for mc_cfg in multi_clips:
                 profile_name = mc_cfg.get("profile", "Default (No Profile)")
@@ -583,7 +574,6 @@ class MainWindow(ctk.CTk):
             if item_cfg.get("options_source") == "Default" and self.app_state.current_video_info and not self.app_state.is_batch_mode:
                 ch_id = self.app_state.current_video_info.get("channel_id")
                 if ch_id:
-                    from core.history import get_channel_rule
                     rule = get_channel_rule(ch_id)
                     if rule and rule.get("settings_dict"):
                         ch_name = rule.get("channel_name") or ch_id
