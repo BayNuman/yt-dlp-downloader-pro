@@ -106,3 +106,81 @@ class UpdateChecker:
         except Exception as fallback_err:
             print(f"[Updater] Tier 2 fallback query failed: {fallback_err}. Update check aborted.")
             pass
+
+def execute_update(payload: UpdatePayload, scratch_dir: str) -> tuple[bool, str]:
+    """
+    Executes the update/downgrade process in a background-safe service layer.
+    Verifies cryptographic hashes (SHA-256) of downloaded update package.
+    Returns: (success_bool, message_str)
+    """
+    import sys
+    import os
+    import subprocess
+    import urllib.request
+    
+    if getattr(sys, "frozen", False):
+        # Standalone portable EXE build doesn't support pip upgrades
+        return False, "Self-updates are not supported in the standalone portable version. Please download the latest version from GitHub!"
+
+    creationflags = 0
+    if sys.platform == "win32":
+        creationflags = subprocess.CREATE_NO_WINDOW
+
+    # If we don't have a download URL (Plan B Fallback / PyPI), do standard pip upgrade
+    if payload.is_fallback or not payload.download_url:
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-U", "yt-dlp"],
+                capture_output=True,
+                creationflags=creationflags,
+                shell=False
+            )
+            success = (result.returncode == 0)
+            msg = "Fallback pip upgrade finished." if success else result.stderr.decode("utf-8", errors="replace")
+            return success, msg
+        except Exception as e:
+            return False, str(e)
+
+    # Tier 1 Custom Update Broker Flow
+    try:
+        # 1. Download target archive
+        temp_filename = f"yt_dlp_update_{payload.latest_version}.tar.gz"
+        temp_path = os.path.join(scratch_dir, temp_filename)
+        
+        print(f"[Updater] Downloading verified update package: {payload.download_url} -> {temp_path}")
+        req = urllib.request.Request(payload.download_url, headers={'User-Agent': 'yt-dlp-Pro-Desktop'})
+        with urllib.request.urlopen(req, timeout=10.0) as response, open(temp_path, "wb") as out_file:
+            out_file.write(response.read())
+            
+        # 2. Cryptographic Integrity Verification (Supply Chain Protection)
+        if payload.sha256:
+            computed_hash = calculate_sha256(temp_path)
+            print(f"[Updater] Verifying SHA-256 Checksum... Expected: {payload.sha256}, Computed: {computed_hash}")
+            
+            if computed_hash.lower() != payload.sha256.lower():
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+                return False, "Güvenlik İhlali: SHA-256 Bütünlük Doğrulaması Başarısız! (Security Breach: Checksum Mismatch)"
+        
+        # 3. Secure Installation
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--no-deps", temp_path],
+            capture_output=True,
+            creationflags=creationflags,
+            shell=False
+        )
+        success = (result.returncode == 0)
+        msg = result.stderr.decode("utf-8", errors="replace") if not success else "Success"
+        
+        # Cleanup downloaded archive
+        try:
+            os.remove(temp_path)
+        except Exception:
+            pass
+            
+        return success, msg
+
+    except Exception as e:
+        return False, str(e)

@@ -45,7 +45,7 @@ class AppController:
             except Exception as e:
                 on_error(str(e))
 
-        threading.Thread(target=run, daemon=True).start()
+        threading.Thread(target=run, daemon=True, name="metadata-fetcher").start()
 
     def check_duplicate(self, url: str, item_cfg: dict) -> tuple[bool, str, str]:
         """

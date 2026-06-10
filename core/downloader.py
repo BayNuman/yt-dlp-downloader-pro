@@ -134,7 +134,7 @@ def _waveform_worker():
         finally:
             waveform_queue.task_done()
 
-threading.Thread(target=_waveform_worker, daemon=True).start()
+threading.Thread(target=_waveform_worker, daemon=True, name="waveform-worker").start()
 
 def enqueue_waveform_generation(task, file_path, callback):
     waveform_queue.put((task, file_path, callback))
@@ -364,6 +364,57 @@ def _cleanup_temp_json(task):
         except Exception:
             pass
 
+def _apply_clip_profile(task, ffmpeg_bin: str, input_path: Path, output_path: Path, 
+                        start_offset: float, end_offset: float, profile, 
+                        precise_override: bool = False, timeout: int = 600) -> bool:
+    """
+    Helper function to apply seeking, re-encoding, and profiles to a clip segment via FFmpeg.
+    """
+    duration_sec = end_offset - start_offset
+    ffmpeg_cmd = [ffmpeg_bin, "-y", "-ss", str(start_offset), "-to", str(end_offset), "-i", str(input_path)]
+
+    if profile and profile.name != "Default":
+        ffmpeg_cmd.extend(profile.get_ffmpeg_args(duration_sec))
+    else:
+        # Smart Transcoding: Re-encode video+audio if Precise Cut is enabled
+        if precise_override:
+            if getattr(task, "mode", "Video") == "Audio":
+                aud_fmt = getattr(task, "audio_format", "mp3")
+                if aud_fmt == "mp3":
+                    ffmpeg_cmd.extend(["-c:a", "libmp3lame", "-b:a", "192k"])
+                elif aud_fmt in ("m4a", "aac"):
+                    ffmpeg_cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+                else:
+                    ffmpeg_cmd.extend(["-c:a", "copy"])
+            else:
+                ffmpeg_cmd.extend(["-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-c:a", "aac", "-b:a", "192k"])
+        else:
+            ffmpeg_cmd.extend(["-c:v", "copy", "-c:a", "copy"])
+
+    ffmpeg_cmd.append(str(output_path))
+
+    startupinfo = None
+    if os.name == 'nt':
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+    proc = None
+    try:
+        proc = subprocess.Popen(
+            ffmpeg_cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            startupinfo=startupinfo,
+            shell=False,
+        )
+        register_active_subprocess(proc)
+        wait_process_with_timeout(proc, timeout=timeout)
+    finally:
+        if proc:
+            unregister_active_subprocess(proc)
+
+    return proc is not None and proc.returncode == 0 and output_path.exists()
+
 def _process_macro_clips(task, output_file, lang, ui_queue, cancel_event) -> str:
     safe_put_ui(ui_queue, ("log", f"[{task.title}] Slicing LeetCode 56 Multi-Clips...\n"))
     ffmpeg_bin = resolve_ffmpeg_path()
@@ -389,51 +440,21 @@ def _process_macro_clips(task, output_file, lang, ui_queue, cancel_event) -> str
         suffix = micro.get("output_suffix", f"_clip{idx_m+1}")
         micro_output_path = input_path.parent / f"{input_path.stem}{suffix}.{target_ext}"
 
-        ffmpeg_cmd = [ffmpeg_bin, "-y", "-ss", str(rel_start), "-to", str(rel_end), "-i", str(input_path)]
-
-        if micro_profile and micro_profile.name != "Default":
-            ffmpeg_cmd.extend(micro_profile.get_ffmpeg_args(duration_sec))
-        else:
-            # Smart Transcoding: Re-encode video+audio if Precise Cut is enabled
-            if micro.get("clip_precise") or getattr(task, "clip_precise", False):
-                if getattr(task, "mode", "Video") == "Audio":
-                    aud_fmt = getattr(task, "audio_format", "mp3")
-                    if aud_fmt == "mp3":
-                        ffmpeg_cmd.extend(["-c:a", "libmp3lame", "-b:a", "192k"])
-                    elif aud_fmt in ("m4a", "aac"):
-                        ffmpeg_cmd.extend(["-c:a", "aac", "-b:a", "192k"])
-                    else:
-                        ffmpeg_cmd.extend(["-c:a", "copy"])
-                else:
-                    ffmpeg_cmd.extend(["-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-c:a", "aac", "-b:a", "192k"])
-            else:
-                ffmpeg_cmd.extend(["-c:v", "copy", "-c:a", "copy"])
-
-        ffmpeg_cmd.append(str(micro_output_path))
-
         safe_put_ui(ui_queue, ("log", f"[{task.title}] Slicing segment {idx_m+1}/{len(macro_clips)}: {micro_output_path.name}\n"))
 
-        startupinfo = None
-        if os.name == 'nt':
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        success = _apply_clip_profile(
+            task=task,
+            ffmpeg_bin=ffmpeg_bin,
+            input_path=input_path,
+            output_path=micro_output_path,
+            start_offset=rel_start,
+            end_offset=rel_end,
+            profile=micro_profile,
+            precise_override=micro.get("clip_precise") or getattr(task, "clip_precise", False),
+            timeout=300
+        )
 
-        proc = None
-        try:
-            proc = subprocess.Popen(
-                ffmpeg_cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                startupinfo=startupinfo,
-                shell=False,
-            )
-            register_active_subprocess(proc)
-            wait_process_with_timeout(proc, timeout=300)
-        finally:
-            if proc:
-                unregister_active_subprocess(proc)
-
-        if micro_output_path.exists():
+        if success:
             micro_paths.append(str(micro_output_path))
             add_download_record(
                 item_id=f"{task.id}_clip{idx_m+1}",
@@ -559,59 +580,31 @@ def _process_single_clip(task, output_file, lang, ui_queue, cancel_event) -> str
     end = parse_time_to_seconds(task.clip_end) or 0.0
     duration_sec = (end - start) if task.clip_enabled else (parse_time_to_seconds(task.duration) or 10.0)
 
-    ffmpeg_cmd = [ffmpeg_bin, "-y"]
     if task.clip_enabled and task.clip_strategy in ("hybrid", "full_trim"):
         if task.clip_strategy == "hybrid":
             buffered_start = max(0.0, start - 5.0)
-            offset_start = start - buffered_start
-            offset_end = end - buffered_start
-            ffmpeg_cmd.extend(["-ss", str(offset_start), "-to", str(offset_end)])
+            rel_start = start - buffered_start
+            rel_end = end - buffered_start
         else:
-            ffmpeg_cmd.extend(["-ss", str(start), "-to", str(end)])
-
-    ffmpeg_cmd.extend(["-i", str(input_path)])
-
-    if profile and profile.name != "Default":
-        ffmpeg_cmd.extend(profile.get_ffmpeg_args(duration_sec))
+            rel_start = start
+            rel_end = end
     else:
-        # Smart Transcoding: Re-encode video+audio if Precise Cut is enabled
-        if getattr(task, "clip_precise", False):
-            if getattr(task, "mode", "Video") == "Audio":
-                aud_fmt = getattr(task, "audio_format", "mp3")
-                if aud_fmt == "mp3":
-                    ffmpeg_cmd.extend(["-c:a", "libmp3lame", "-b:a", "192k"])
-                elif aud_fmt in ("m4a", "aac"):
-                    ffmpeg_cmd.extend(["-c:a", "aac", "-b:a", "192k"])
-                else:
-                    ffmpeg_cmd.extend(["-c:a", "copy"])
-            else:
-                ffmpeg_cmd.extend(["-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-c:a", "aac", "-b:a", "192k"])
-        else:
-            ffmpeg_cmd.extend(["-c:v", "copy", "-c:a", "copy"])
+        rel_start = 0.0
+        rel_end = duration_sec
 
-    ffmpeg_cmd.append(str(final_path))
+    success = _apply_clip_profile(
+        task=task,
+        ffmpeg_bin=ffmpeg_bin,
+        input_path=input_path,
+        output_path=final_path,
+        start_offset=rel_start,
+        end_offset=rel_end,
+        profile=profile,
+        precise_override=getattr(task, "clip_precise", False),
+        timeout=600
+    )
 
-    startupinfo = None
-    if os.name == 'nt':
-        startupinfo = subprocess.STARTUPINFO()
-        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-
-    proc = None
-    try:
-        proc = subprocess.Popen(
-            ffmpeg_cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            startupinfo=startupinfo,
-            shell=False,
-        )
-        register_active_subprocess(proc)
-        wait_process_with_timeout(proc, timeout=600)
-    finally:
-        if proc:
-            unregister_active_subprocess(proc)
-
-    if proc.returncode == 0 and final_path.exists():
+    if success:
         try:
             os.remove(input_path)
             clean_output_path = input_path.with_suffix(f".{target_ext}")

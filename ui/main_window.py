@@ -132,7 +132,7 @@ class MainWindow(ctk.CTk):
             
             self.after(0, self._show_deno_prompt)
 
-        threading.Thread(target=bg_check, daemon=True).start()
+        threading.Thread(target=bg_check, daemon=True, name="deno-env-checker").start()
 
     def _show_deno_prompt(self) -> None:
         import shutil
@@ -194,7 +194,7 @@ class MainWindow(ctk.CTk):
                         f"Deno kurulumu sırasında hata oluştu: {e}\nLütfen Deno'yu manuel olarak kurun." if lang == "tr" else f"Error during installation: {e}"
                     ))
                     
-            threading.Thread(target=installer_thread, daemon=True).start()
+            threading.Thread(target=installer_thread, daemon=True, name="deno-installer").start()
 
     def _build_header_card(self):
         lang = self.app_state.current_lang
@@ -414,8 +414,8 @@ class MainWindow(ctk.CTk):
         # Reset the manual override track on new preview
         self.advanced_panel.reset_user_explicit()
 
-        # Spawn async metadata fetch thread
-        threading.Thread(target=self._run_metadata_fetch, args=(url,), daemon=True).start()
+        # Call async metadata fetch (controller handles background thread execution)
+        self._run_metadata_fetch(url)
 
     def _on_create_channel_rule(self, channel_id: str, channel_name: str):
         settings_dict = self.advanced_panel.get_settings_dict()
@@ -668,10 +668,10 @@ class MainWindow(ctk.CTk):
         # Check if local schedule is active
         if self.advanced_panel.scheduler_enabled_var.get():
             time_str = self.advanced_panel.schedule_time_var.get().strip()
-            threading.Thread(target=self._run_scheduler_wait_loop, args=(time_str,), daemon=True).start()
+            threading.Thread(target=self._run_scheduler_wait_loop, args=(time_str,), daemon=True, name="scheduler-wait-loop").start()
         else:
             # Spawn queue background execution worker thread
-            threading.Thread(target=run_queue_executor, args=(self.app_state, self.ui_queue, self.cancel_event), daemon=True).start()
+            threading.Thread(target=run_queue_executor, args=(self.app_state, self.ui_queue, self.cancel_event), daemon=True, name="queue-executor").start()
 
     def _run_scheduler_wait_loop(self, target_time_str: str) -> None:
         lang = self.app_state.current_lang
@@ -697,7 +697,7 @@ class MainWindow(ctk.CTk):
                     self.ui_queue.put(("log", "[Zamanlayıcı] Hedef saate ulaşıldı! İndirmeler başlatılıyor...\n"))
                     self.cancel_event.clear()
                     self.app_state.current_item_index = 0
-                    threading.Thread(target=run_queue_executor, args=(self.app_state, self.ui_queue, self.cancel_event), daemon=True).start()
+                    threading.Thread(target=run_queue_executor, args=(self.app_state, self.ui_queue, self.cancel_event), daemon=True, name="queue-executor").start()
                     break
                 
                 target_dt = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
@@ -955,100 +955,14 @@ class MainWindow(ctk.CTk):
         status_text = "Güncelleniyor... Lütfen bekleyin." if lang == "tr" else "Upgrading... Please wait."
         self.btn_update_warning.configure(text=status_text, state="disabled")
         
-        import subprocess
-        import sys
         import threading
-        import urllib.request
-        import os
-        from core.updater import calculate_sha256
+        from core.updater import execute_update
         
         def _run():
-            if getattr(sys, "frozen", False):
-                # Standard standalone build cannot perform inline pip upgrades
-                err_msg = (
-                    "Tekil taşınabilir sürümde otomatik güncelleme desteklenmemektedir. Lütfen GitHub üzerinden yeni sürümü indirin."
-                    if self.app_state.current_lang == "tr"
-                    else (
-                        "La actualización automática no está soportada en la versión portátil. ¡Por favor descargue la última versión desde GitHub!"
-                        if self.app_state.current_lang == "es"
-                        else "Self-updates are not supported in the standalone portable version. Please download the latest version from GitHub!"
-                    )
-                )
-                self.after(0, lambda: self._on_upgrade_complete(False, err_msg))
-                return
-
-            creationflags = 0
-            if sys.platform == "win32":
-                creationflags = subprocess.CREATE_NO_WINDOW
-                
-            # If we don't have a download URL (Plan B Fallback / PyPI), do standard pip upgrade
-            if payload.is_fallback or not payload.download_url:
-                try:
-                    result = subprocess.run(
-                        [sys.executable, "-m", "pip", "install", "-U", "yt-dlp"],
-                        capture_output=True,
-                        creationflags=creationflags,
-                        shell=False
-                    )
-                    success = (result.returncode == 0)
-                    msg = "Fallback pip upgrade finished."
-                except Exception as e:
-                    success = False
-                    msg = str(e)
-                self.after(0, lambda: self._on_upgrade_complete(success, msg))
-                return
-                
-            # Tier 1 Custom Update Broker Flow
-            try:
-                # 1. Download target archive
-                temp_filename = f"yt_dlp_update_{payload.latest_version}.tar.gz"
-                temp_path = os.path.join(self.scratch_dir, temp_filename)
-                
-                print(f"[Updater] Downloading verified update package: {payload.download_url} -> {temp_path}")
-                req = urllib.request.Request(payload.download_url, headers={'User-Agent': 'yt-dlp-Pro-Desktop'})
-                with urllib.request.urlopen(req, timeout=10.0) as response, open(temp_path, "wb") as out_file:
-                    out_file.write(response.read())
-                    
-                # 2. Cryptographic Integrity Verification (Supply Chain Protection)
-                if payload.sha256:
-                    computed_hash = calculate_sha256(temp_path)
-                    print(f"[Updater] Verifying SHA-256 Checksum... Expected: {payload.sha256}, Computed: {computed_hash}")
-                    
-                    if computed_hash.lower() != payload.sha256.lower():
-                        # Hash mismatch! Supply chain attack intercepted!
-                        print("[Updater] CRITICAL ERROR: SHA-256 Checksum Mismatch! Aborting update for security.")
-                        try:
-                            os.remove(temp_path)
-                        except Exception:
-                            pass
-                        err_msg = "Güvenlik İhlali: SHA-256 Bütünlük Doğrulaması Başarısız! (Security Breach: Checksum Mismatch)"
-                        self.after(0, lambda: self._on_upgrade_complete(False, err_msg))
-                        return
-                
-                # 3. Secure Installation
-                # Install the verified package archive securely without fetching unresolved dependencies from web
-                result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "--no-deps", temp_path],
-                    capture_output=True,
-                    creationflags=creationflags,
-                    shell=False
-                )
-                success = (result.returncode == 0)
-                msg = result.stderr.decode("utf-8", errors="replace") if not success else "Success"
-                
-                # Cleanup downloaded archive
-                try:
-                    os.remove(temp_path)
-                except Exception:
-                    pass
-                    
-            except Exception as e:
-                success = False
-                msg = str(e)
-                
+            success, msg = execute_update(payload, str(self.scratch_dir))
             self.after(0, lambda: self._on_upgrade_complete(success, msg))
             
-        threading.Thread(target=_run, daemon=True).start()
+        threading.Thread(target=_run, daemon=True, name="self-updater").start()
 
     def _on_upgrade_complete(self, success: bool, message: str = ""):
         lang = self.app_state.current_lang
