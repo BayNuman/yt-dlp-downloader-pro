@@ -9,8 +9,15 @@ import ctypes
 import threading
 import queue
 import logging
+import signal
+from typing import NamedTuple
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, wait
+
+class CommandResult(NamedTuple):
+    returncode: int
+    saw_http_403: bool
+    saw_outdated: bool
 
 # Windows Sleep prevention constants
 ES_CONTINUOUS = 0x80000000
@@ -148,7 +155,6 @@ from core.app_state import AppState, DownloadTask, TaskStatus
 from core.command_builder import build_command, format_cmd_for_log, YOUTUBE_FALLBACK_EXTRACTOR_ARGS
 from core.history import add_download_record, update_download_status
 from core.clip import parse_time_to_seconds
-from core.env import refresh_path_env
 
 def resolve_ffmpeg_path() -> str:
     """Finds the ffmpeg binary, checking bundled paths or standard locations."""
@@ -185,7 +191,7 @@ def append_options_before_urls(cmd: list[str], urls: list[str], options: list[st
     url_area = cmd[-len(urls):]
     return option_area + options + url_area
 
-def run_command_stream(cmd: list[str], task: DownloadTask, state: AppState, ui_queue, cancel_event) -> tuple[int, bool, bool]:
+def run_command_stream(cmd: list[str], task: DownloadTask, state: AppState, ui_queue, cancel_event) -> CommandResult:
     progress_re = re.compile(
         r"\[download\]\s+(\d{1,3}(?:\.\d+)?)%\s+of\s+(~?\d+(?:\.\d+)?\w+)\s+at\s+(\d+(?:\.\d+)?\w+/s|Unknown speed)\s+ETA\s+(\d{2}:\d{2}|\w+)"
     )
@@ -275,7 +281,11 @@ def run_command_stream(cmd: list[str], task: DownloadTask, state: AppState, ui_q
             if "version" in line and "older than 90 days" in line:
                 saw_outdated_warning = True
 
-        return process.wait(), saw_http_403, saw_outdated_warning
+        return CommandResult(
+            returncode=process.wait(),
+            saw_http_403=saw_http_403,
+            saw_outdated=saw_outdated_warning
+        )
     finally:
         unregister_active_subprocess(process)
 
@@ -710,10 +720,10 @@ def download_single_task(task: DownloadTask, state: AppState, ui_queue, cancel_e
     _log_start(task, cmd, ui_queue)
 
     try:
-        code, saw_http_403, saw_outdated = run_command_stream(cmd, task, state, ui_queue, cancel_event)
+        result = run_command_stream(cmd, task, state, ui_queue, cancel_event)
         _cleanup_temp_json(task)
 
-        if saw_outdated:
+        if result.saw_outdated:
             state.saw_outdated_warning = True
             safe_put_ui(ui_queue, ("toast_outdated", None))
 
@@ -721,18 +731,18 @@ def download_single_task(task: DownloadTask, state: AppState, ui_queue, cancel_e
             _handle_cancel(task, lang, ui_queue, state.output_dir)
             return
 
-        if code != 0:
+        if result.returncode != 0:
             should_retry = (
-                saw_http_403
+                result.saw_http_403
                 and task.youtube_403
                 and YOUTUBE_FALLBACK_EXTRACTOR_ARGS not in " ".join(cmd)
             )
             if should_retry:
                 safe_put_ui(ui_queue, ("log", f"[{task.title}] YouTube 403 Forbidden, triggering TV Client fallback...\n"))
                 retry_cmd = append_options_before_urls(cmd, [task.url], ["--extractor-args", YOUTUBE_FALLBACK_EXTRACTOR_ARGS])
-                code, saw_http_403, saw_outdated = run_command_stream(retry_cmd, task, state, ui_queue, cancel_event)
+                result = run_command_stream(retry_cmd, task, state, ui_queue, cancel_event)
 
-        if code == 0:
+        if result.returncode == 0:
             output_file = task._output_file
             
             # Resolve actual physical path (fixes Windows double-spaces and Unicode slashes ⧸ cp1254 mismatches)
@@ -750,7 +760,7 @@ def download_single_task(task: DownloadTask, state: AppState, ui_queue, cancel_e
 
             _set_completed_status(task, output_file, lang, ui_queue)
         else:
-            _set_failed_status(task, code, lang, ui_queue, state.output_dir)
+            _set_failed_status(task, result.returncode, lang, ui_queue, state.output_dir)
 
     except Exception as e:
         _handle_exception(task, e, lang, ui_queue, state.output_dir)
@@ -762,7 +772,6 @@ def run_queue_executor(state: AppState, ui_queue, cancel_event) -> None:
     """Processes pending items in parallel utilizing ThreadPoolExecutor based on max_workers."""
     lang = state.current_lang
     state.is_executor_running = True
-    refresh_path_env()
     
     # Query pending tasks
     with state._lock:
@@ -810,9 +819,7 @@ def toggle_pause_task(task):
         
     proc = getattr(task, "_process", None)
     if proc:
-        import os
         if os.name == 'nt':
-            import ctypes
             try:
                 if task.is_paused:
                     ctypes.windll.ntdll.NtSuspendProcess(proc._handle)
@@ -821,7 +828,6 @@ def toggle_pause_task(task):
             except Exception as e:
                 logging.error(f"[!] WinAPI Suspend/Resume error: {e}")
         else:
-            import signal
             try:
                 if task.is_paused:
                     os.kill(proc.pid, signal.SIGSTOP)

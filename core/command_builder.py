@@ -4,6 +4,7 @@ import shlex
 import os
 import atexit
 from pathlib import Path
+from typing import Optional
 from core.clip import parse_time_to_seconds
 
 _created_temp_files = []
@@ -105,11 +106,19 @@ def sanitize_extra_args(extra_args_str: str) -> list[str]:
         
     return sanitized_parts
 
-def effective_video_height(item) -> str:
+def effective_video_height(item) -> Optional[int]:
     selected = VIDEO_PRESET_HEIGHT.get(safe_get(item, "video_profile"), "1080")
     if selected == "CUSTOM":
-        return safe_get(item, "video_limit", "1080")
-    return selected
+        val = safe_get(item, "video_limit", "1080")
+    else:
+        val = selected
+        
+    if val == "Best" or not val:
+        return None
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return 1080
 
 def build_command(item, output_dir: str) -> list[str]:
     import tempfile
@@ -168,7 +177,7 @@ def build_command(item, output_dir: str) -> list[str]:
             preferred_audio_selector = "ba[acodec*=opus]"
             secondary_audio_selector = "ba[ext=webm]"
             
-        if quality == "Best":
+        if quality is None:
             video_selector = "bv*"
             fallback_selector = "b"
         else:

@@ -125,8 +125,6 @@ class MainWindow(ctk.CTk):
 
         def bg_check():
             import shutil
-            from core.env import refresh_path_env
-            refresh_path_env()
             if shutil.which('deno') or shutil.which('node'):
                 return
             

@@ -13,8 +13,6 @@ def fetch_video_metadata(url: str, cookies_file: str, browser_cookies: str, scra
     Extracts full metadata from a video URL using yt-dlp, and downloads/compresses its thumbnail.
     This contains pure business logic and has no dependency on Tkinter or other UI modules.
     """
-    from core.env import refresh_path_env
-    refresh_path_env()
 
     ydl_opts = {
         'skip_download': True,
