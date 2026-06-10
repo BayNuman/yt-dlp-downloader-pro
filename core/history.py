@@ -99,41 +99,52 @@ def init_db():
     # Init db is run once synchronously at startup, before thread dispatchers
     conn = connect_db()
     cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS downloads (
-            id TEXT PRIMARY KEY,
-            title TEXT,
-            url TEXT,
-            format TEXT,
-            file_path TEXT,
-            status TEXT,
-            downloaded_at INTEGER,
-            file_size_bytes INTEGER,
-            duration_seconds INTEGER,
-            thumbnail_path TEXT
-        )
-    """)
-    # Schema migration: check and add thumbnail_path if missing
-    try:
-        cursor.execute("SELECT thumbnail_path FROM downloads LIMIT 1")
-    except sqlite3.OperationalError:
+    
+    # Enable WAL mode and check current version
+    cursor.execute("PRAGMA user_version")
+    current_version = cursor.fetchone()[0]
+    
+    TARGET_VERSION = 3
+    
+    if current_version < 1:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS downloads (
+                id TEXT PRIMARY KEY,
+                title TEXT,
+                url TEXT,
+                format TEXT,
+                file_path TEXT,
+                status TEXT,
+                downloaded_at INTEGER,
+                file_size_bytes INTEGER,
+                duration_seconds INTEGER
+            )
+        """)
+        
+    if current_version < 2:
         try:
             cursor.execute("ALTER TABLE downloads ADD COLUMN thumbnail_path TEXT")
-        except Exception:
+        except sqlite3.OperationalError:
+            # Column might already exist from older manual runs
             pass
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_downloads_url_format ON downloads (url, format)
-    """)
-    # Channel Auto-Rules table (schemaless JSON settings storage)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS channel_rules (
-            channel_id TEXT PRIMARY KEY,
-            channel_name TEXT,
-            settings_json TEXT,
-            created_at INTEGER,
-            updated_at INTEGER
-        )
-    """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_downloads_url_format ON downloads (url, format)
+        """)
+        
+    if current_version < 3:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS channel_rules (
+                channel_id TEXT PRIMARY KEY,
+                channel_name TEXT,
+                settings_json TEXT,
+                created_at INTEGER,
+                updated_at INTEGER
+            )
+        """)
+        
+    if current_version < TARGET_VERSION:
+        cursor.execute(f"PRAGMA user_version = {TARGET_VERSION}")
+        
     conn.commit()
     conn.close()
 

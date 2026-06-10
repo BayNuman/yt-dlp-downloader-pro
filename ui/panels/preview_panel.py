@@ -691,31 +691,13 @@ class PreviewPanel(ctk.CTkFrame):
             self.clip_buttons_frame.grid_remove()
 
     def _bg_fetch_sponsor_segments(self, video_id):
-        import urllib.request
-        import json
         import threading
+        from core.services import fetch_sponsor_segments
         
         def run():
-            url = f"https://sponsor.ajay.app/api/skipSegments?videoID={video_id}"
-            try:
-                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req, timeout=5) as response:
-                    if response.status == 200:
-                        data = json.loads(response.read().decode('utf-8'))
-                        segments = []
-                        for entry in data:
-                            seg = entry.get("segment")
-                            cat = entry.get("category", "sponsor")
-                            if seg and len(seg) == 2:
-                                segments.append({
-                                    "start": float(seg[0]),
-                                    "end": float(seg[1]),
-                                    "category": cat
-                                })
-                        if segments:
-                            self.after(0, self._on_sponsor_segments_loaded, segments)
-            except Exception as e:
-                print(f"[SponsorBlock] Fetch failed or no segments found: {e}")
+            segments = fetch_sponsor_segments(video_id)
+            if segments:
+                self.after(0, self._on_sponsor_segments_loaded, segments)
                 
         threading.Thread(target=run, daemon=True).start()
 

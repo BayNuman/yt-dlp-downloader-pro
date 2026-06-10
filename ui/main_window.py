@@ -22,6 +22,7 @@ from core.app_state import AppState, TaskStatus, save_app_preferences
 from core.downloader import run_queue_executor, resolve_ffmpeg_path, kill_all_active_subprocesses
 from core.history import init_db, add_download_record, get_all_downloads, shutdown_db
 from core.clip import decide_clip_strategy, parse_time_to_seconds, format_seconds_to_mmss
+from core.controller import AppController
 
 # UI imports
 from ui.theme import (
@@ -43,6 +44,7 @@ class MainWindow(ctk.CTk):
         self.cancel_event = threading.Event()
         self._queue_lock = threading.RLock()
         self.last_fetched_url = ""
+        self.controller = AppController(state)
         
         # Setup paths
         self.app_state.output_dir = str(Path.home() / "Downloads" / "yt-downloads")
@@ -432,109 +434,52 @@ class MainWindow(ctk.CTk):
         messagebox.showinfo("Başarılı" if lang == "tr" else ("Éxito" if lang == "es" else "Success"), msg)
 
     def _run_metadata_fetch(self, url: str) -> None:
-        try:
-            # 1. Dynamically refresh PATH to pick up newly installed runtimes like Deno without rebooting
-            from core.env import refresh_path_env
-            refresh_path_env()
+        settings = self.advanced_panel.get_settings_dict()
+        cookies_file = settings.get("cookies", "").strip()
+        browser_cookies = settings.get("browser_cookies", "").strip().lower()
 
-            import yt_dlp
-            
-            # 2. Extract current cookie settings from AdvancedPanel to support private or throttled videos
-            settings = self.advanced_panel.get_settings_dict()
-            cookies_file = settings.get("cookies", "").strip()
-            browser_cookies = settings.get("browser_cookies", "").strip().lower()
-
-            # We skip downloading, but extract full details (including chapters and formats)
-            ydl_opts = {
-                'skip_download': True,
-                'quiet': True,
-                'no_warnings': True,
-            }
-
-            # Optimization #43: For playlist URLs, use flat extraction to avoid
-            # fetching each video's full format list — speeds up preview by 10-100x
-            if 'list=' in url:
-                ydl_opts['extract_flat'] = 'in_playlist'
-            
-            if cookies_file:
-                ydl_opts['cookiefile'] = cookies_file
-            elif browser_cookies and browser_cookies not in ("kapali", "disabled", "off", "closed", "none"):
-                ydl_opts['cookiesfrombrowser'] = (browser_cookies,)
-
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-
-            if not info:
-                raise ValueError("No info extracted")
-
-            title = info.get("title", "Unknown Title")
-            uploader = info.get("uploader", info.get("channel", "Unknown Channel"))
-            duration_sec = info.get("duration", 0.0)
-
-            thumbnail_url = info.get("thumbnail")
+        def on_success(metadata):
             local_thumb_img = None
-            self.app_state.current_thumbnail_path = None
-
-            if thumbnail_url:
+            thumb_path = metadata.get("thumbnail_path")
+            if thumb_path:
                 try:
-                    url_hash = hashlib.md5(thumbnail_url.encode()).hexdigest()
-                    from core.history import get_app_data_dir
-                    thumbs_dir = get_app_data_dir() / "thumbnails"
-                    thumbs_dir.mkdir(parents=True, exist_ok=True)
-                    compressed_thumb_path = thumbs_dir / f"thumb_{url_hash}.webp"
-                    
-                    temp_raw_path = self.scratch_dir / f"temp_{url_hash}.jpg"
-                    
-                    req = urllib.request.Request(thumbnail_url, headers={'User-Agent': 'Mozilla/5.0'})
-                    with urllib.request.urlopen(req) as response:
-                        with open(temp_raw_path, 'wb') as out_file:
-                            out_file.write(response.read())
-
-                    with Image.open(temp_raw_path) as pil_img:
-                        resized_webp = pil_img.resize((320, 180), Image.Resampling.LANCZOS)
-                        resized_webp.save(compressed_thumb_path, "webp", quality=75)
-                    
-                    try:
-                        os.remove(temp_raw_path)
-                    except Exception:
-                        pass
-                        
-                    self.app_state.current_thumbnail_path = str(compressed_thumb_path)
-
-                    with Image.open(compressed_thumb_path) as pil_img:
+                    with Image.open(thumb_path) as pil_img:
                         resized_ui = pil_img.resize((160, 90), Image.Resampling.LANCZOS).copy()
                     local_thumb_img = ctk.CTkImage(light_image=resized_ui, dark_image=resized_ui, size=(160, 90))
                 except Exception as e:
-                    print(f"Thumbnail download/transcode failed: {e}")
+                    print(f"Error loading thumbnail in UI: {e}")
 
-            # Extract channel ID and Name for auto-rules
-            ch_id = info.get("channel_id") or info.get("uploader_id")
-            ch_name = info.get("channel") or info.get("uploader")
-            if ch_id:
-                info["channel_id"] = ch_id
-            if ch_name:
-                info["channel_name"] = ch_name
-
-            # Cache the extracted info inside state
-            self.app_state.current_video_info = info
+            self.app_state.current_thumbnail_path = thumb_path
+            self.app_state.current_video_info = metadata.get("raw_info")
 
             fetched_metadata = {
                 "url": url,
-                "title": title,
-                "uploader": uploader,
-                "duration": duration_sec,
+                "title": metadata["title"],
+                "uploader": metadata["uploader"],
+                "duration": metadata["duration"],
                 "thumbnail_img": local_thumb_img,
-                "chapters": info.get("chapters", []),
-                "filesize": info.get("filesize"),
-                "filesize_approx": info.get("filesize_approx"),
-                "channel_id": ch_id,
-                "channel_name": ch_name
+                "chapters": metadata["chapters"],
+                "filesize": metadata["filesize"],
+                "filesize_approx": metadata["filesize_approx"],
+                "channel_id": metadata["channel_id"],
+                "channel_name": metadata["channel_name"]
             }
             self.ui_queue.put(("metadata_ready", fetched_metadata))
 
-        except Exception as e:
-            print(f"[!] Metadata fetch failed: {e}")
-            self.ui_queue.put(("metadata_error", str(e)))
+        def on_error(err_str):
+            print(f"[!] Metadata fetch failed: {err_str}")
+            self.ui_queue.put(("metadata_error", err_str))
+
+        from core.history import get_app_data_dir
+        self.controller.fetch_metadata_async(
+            url=url,
+            cookies_file=cookies_file,
+            browser_cookies=browser_cookies,
+            scratch_dir=self.scratch_dir,
+            app_data_dir=get_app_data_dir(),
+            on_success=on_success,
+            on_error=on_error
+        )
 
     def _on_chapter_clicked(self, start_seconds: float, end_seconds: float, chapter_title: str):
         # Feature 3.4 Chapters auto-clipping selection integration directly inside PreviewPanel
@@ -572,247 +517,83 @@ class MainWindow(ctk.CTk):
             return
 
         lang = self.app_state.current_lang
-        # Gather active configurations from advanced panel
         item_cfg = self.advanced_panel.get_settings_dict()
 
-        # Dynamic filtering of non-task fields to match fields of the DownloadTask dataclass
-        import dataclasses
-        from core.app_state import DownloadTask
-        valid_task_fields = {f.name for f in dataclasses.fields(DownloadTask)}
-        item_cfg = {k: v for k, v in item_cfg.items() if k in valid_task_fields}
+        # 1. Check for duplicates using Controller
+        is_duplicate, dup_title, dup_format = self.controller.check_duplicate(url, item_cfg)
+        if is_duplicate:
+            title_msg = TRANSLATIONS[lang]["lbl_duplicate_title"]
+            body_template = TRANSLATIONS[lang]["lbl_duplicate_body"]
+            body_msg = body_template.replace("{title}", dup_title).replace("{format}", dup_format)
+            confirm = messagebox.askyesno(title_msg, body_msg)
+            if not confirm:
+                return
 
-        # Headless Channel Rules Engine
-        if item_cfg.get("options_source") == "Default" and self.app_state.current_video_info and not self.app_state.is_batch_mode:
-            ch_id = self.app_state.current_video_info.get("channel_id")
-            if ch_id:
-                from core.history import get_channel_rule
-                rule = get_channel_rule(ch_id)
-                if rule and rule.get("settings_dict"):
-                    item_cfg.update(rule["settings_dict"])
-                    item_cfg["options_source"] = "Default"
-                    ch_name = rule.get("channel_name") or ch_id
-                    msg = f"[Kanal Kuralı] {ch_name} için otomatik kural uygulandı.\n"
-                    self.progress_panel.append_log_batch([msg])
+        # 2. Merge clipping parameters directly from PreviewPanel if not in batch mode
+        if not self.app_state.is_batch_mode:
+            item_cfg.update(self.preview_panel.get_clip_settings())
+        else:
+            item_cfg.update({
+                "clip_enabled": False,
+                "clip_start": "00:00",
+                "clip_end": "00:00",
+                "clip_precise": False,
+                "export_profile": "Default (No Profile)"
+            })
 
-        with self._queue_lock:
-            # 3-Tier Validation
-            video_id = self.extract_video_id(url)
-            is_duplicate = False
-            duplicate_title = ""
-            duplicate_format = ""
-            
-            # Tier A: RAM check (Active queue)
-            for task in self.app_state.queue_list:
-                if task.url == url or (video_id and video_id in task.url):
-                    is_duplicate = True
-                    duplicate_title = task.title
-                    duplicate_format = f"{task.mode} ({task.video_profile if task.mode == 'Video' else task.audio_quality})"
-                    break
-                    
-            # Tier B: Database check O(log N)
-            if not is_duplicate:
-                from core.history import find_completed_download_in_db
-                format_desc = f"{item_cfg.get('mode', 'Video')} ({item_cfg.get('video_profile', 'Custom') if item_cfg.get('mode', 'Video') == 'Video' else item_cfg.get('audio_quality', 'Dengeli (192K)')})"
-                record = find_completed_download_in_db(video_id, url, format_desc)
-                if record:
-                    # Tier C: O(1) Physical presence check on disk
-                    file_path = record.get("file_path", "")
-                    if file_path and os.path.exists(file_path):
-                        is_duplicate = True
-                        duplicate_title = record.get("title", "Video")
-                        duplicate_format = record.get("format", "")
-                    else:
-                        ext = item_cfg.get("video_container", "mp4") if item_cfg.get("mode", "Video") == "Video" else item_cfg.get("audio_format", "mp3")
-                        possible_paths = [
-                            os.path.join(self.app_state.output_dir, f"{record.get('title')}.{ext}"),
-                            os.path.join(self.app_state.output_dir, f"{record.get('title')} [{video_id}].{ext}"),
-                            os.path.join(self.app_state.output_dir, f"{record.get('title')}-{video_id}.{ext}")
-                        ]
-                        for path in possible_paths:
-                            if os.path.exists(path):
-                                is_duplicate = True
-                                duplicate_title = record.get("title", "Video")
-                                duplicate_format = record.get("format", "")
-                                break
-
-            if is_duplicate:
-                title_msg = TRANSLATIONS[lang]["lbl_duplicate_title"]
-                body_template = TRANSLATIONS[lang]["lbl_duplicate_body"]
-                body_msg = body_template.replace("{title}", duplicate_title).replace("{format}", duplicate_format)
-                confirm = messagebox.askyesno(title_msg, body_msg)
-                if not confirm:
-                    return
-
-            # Merge clipping parameters directly from PreviewPanel if not in batch mode
-            if not self.app_state.is_batch_mode:
-                item_cfg.update(self.preview_panel.get_clip_settings())
-            else:
-                # Batch mode does not support active single-video clipping parameters
-                item_cfg.update({
-                    "clip_enabled": False,
-                    "clip_start": "00:00",
-                    "clip_end": "00:00",
-                    "clip_precise": False,
-                    "export_profile": "Default (No Profile)"
-                })
-                
-            # If clipping is enabled, check for export profiles duration boundaries
-            if item_cfg.get("clip_enabled") and not self.app_state.is_batch_mode:
-                from core.profiles import EXPORT_PROFILES
-                
-                multi_clips = self.preview_panel.get_multi_clips()
-                for mc_cfg in multi_clips:
-                    profile_name = mc_cfg.get("profile", "Default (No Profile)")
-                    profile = EXPORT_PROFILES.get(profile_name)
-                    diff = mc_cfg["end"] - mc_cfg["start"]
-                    
-                    if profile and profile.max_duration and diff > profile.max_duration:
-                        error_msg = (
-                            f"Seçilen kırpma süresi ({diff:.1f}s), '{profile.name}' profilinin "
-                            f"maksimum sınırını ({profile.max_duration}s) aşıyor! Lütfen süreyi kısaltın."
-                            if lang == "tr"
-                            else (
-                                f"El tiempo seleccionado ({diff:.1f}s) supera el límite máximo "
-                                f"del perfil '{profile.name}' ({profile.max_duration}s). Por favor acórtelo."
-                                if lang == "es"
-                                else f"Selected clip duration ({diff:.1f}s) exceeds '{profile.name}' "
-                                     f"profile maximum limit ({profile.max_duration}s)! Please shorten the clip."
-                            )
+        # 3. Validate export profile duration limits
+        if item_cfg.get("clip_enabled") and not self.app_state.is_batch_mode:
+            from core.profiles import EXPORT_PROFILES
+            multi_clips = self.preview_panel.get_multi_clips()
+            for mc_cfg in multi_clips:
+                profile_name = mc_cfg.get("profile", "Default (No Profile)")
+                profile = EXPORT_PROFILES.get(profile_name)
+                diff = mc_cfg["end"] - mc_cfg["start"]
+                if profile and profile.max_duration and diff > profile.max_duration:
+                    error_msg = (
+                        f"Seçilen kırpma süresi ({diff:.1f}s), '{profile.name}' profilinin "
+                        f"maksimum sınırını ({profile.max_duration}s) aşıyor! Lütfen süreyi kısaltın."
+                        if lang == "tr"
+                        else (
+                            f"El tiempo seleccionado ({diff:.1f}s) supera el límite máximo "
+                            f"del perfil '{profile.name}' ({profile.max_duration}s). Por favor acórtelo."
+                            if lang == "es"
+                            else f"Selected clip duration ({diff:.1f}s) exceeds '{profile.name}' "
+                                 f"profile maximum limit ({profile.max_duration}s)! Please shorten the clip."
                         )
-                        messagebox.showwarning(TRANSLATIONS[self.app_state.current_lang]["lbl_dialog_warning_title"], error_msg)
-                        return
-            
-            # Decide seek strategy if clipping is enabled
-            clip_strategy = "stream_seek"
-            if item_cfg.get("clip_enabled") and self.app_state.current_video_info:
-                start = parse_time_to_seconds(item_cfg.get("clip_start", "00:00")) or 0.0
-                end = parse_time_to_seconds(item_cfg.get("clip_end", "00:00")) or 0.0
-                clip_strategy = decide_clip_strategy(self.app_state.current_video_info, start, end)
+                    )
+                    messagebox.showwarning(TRANSLATIONS[self.app_state.current_lang]["lbl_dialog_warning_title"], error_msg)
+                    return
+        else:
+            multi_clips = []
 
+        # Ensure current thumbnail path is passed to task config
+        item_cfg["thumbnail_path"] = getattr(self.app_state, "current_thumbnail_path", None)
+
+        # 4. Delegate task creation and state append to Controller
+        success, error, added_count = self.controller.validate_and_add_tasks(url, item_cfg, multi_clips, lang)
+        
+        if success:
             if self.app_state.is_batch_mode:
-                # Multi-line batch processing
-                added_count = 0
-                from core.app_state import DownloadTask
-                with self.app_state._lock:
-                    for raw_url in self.app_state.batch_urls:
-                        if raw_url.startswith(("http://", "https://")):
-                            item_id = uuid.uuid4().hex
-                            task_params = {
-                                "id": item_id,
-                                "url": raw_url,
-                                "title": f"Batch Link [{item_id[:6]}]",
-                                "duration": "00:00",
-                                "preset": item_cfg.get("video_profile", "Custom"),
-                                "status": "Bekliyor" if lang == "tr" else ("Esperando" if lang == "es" else "Waiting"),
-                                "clip_strategy": clip_strategy
-                            }
-                            task_params.update(item_cfg)
-                            task = DownloadTask(**task_params)
-                            self.app_state.queue_list.append(task)
-                            added_count += 1
-                
                 self.url_panel.set_url("")
                 self.progress_panel.update_status("●", THEME_ACCENT_BLUE, TRANSLATIONS[self.app_state.current_lang]["lbl_status_added"].format(count=added_count))
             else:
-                # Single item queueing
-                title_base = self.app_state.current_video_info.get("title", "Video Title") if self.app_state.current_video_info else "Downloading video"
-                duration_total = self.app_state.current_video_info.get("duration", 0) if self.app_state.current_video_info else 0
-                duration = format_seconds_to_mmss(duration_total)
-                
-                from core.app_state import DownloadTask
-                # Check if Multi-Clip is active
-                multi_clips = self.preview_panel.get_multi_clips()
-                if multi_clips:
-                    from core.clip import MicroClip, optimize_clip_intervals
-                    micro_list = []
-                    for i, c in enumerate(multi_clips):
-                        micro_list.append(MicroClip(
-                            id=f"clip_{i+1}",
-                            start=c["start"],
-                            end=c["end"],
-                            export_profile=c["profile"],
-                            output_name=f"_clip{i+1}"
-                        ))
-                    
-                    # LeetCode 56 Greedy Merging (threshold of 30s)
-                    macro_list = optimize_clip_intervals(micro_list, threshold_sec=30.0)
-                    
-                    added_count = 0
-                    for idx_macro, macro in enumerate(macro_list):
-                        item_id = uuid.uuid4().hex
-                        macro_start_str = format_seconds_to_mmss(macro.start)
-                        macro_end_str = format_seconds_to_mmss(macro.end)
-                        
-                        macro_item_params = {
-                            "id": item_id,
-                            "url": url,
-                            "preset": item_cfg.get("video_profile", "Custom"),
-                            "status": "Bekliyor" if lang == "tr" else ("Esperando" if lang == "es" else "Waiting"),
-                            "video_info": self.app_state.current_video_info,  # Inject cached video_info for --load-info-json
-                            "merge_clips": self.preview_panel.merge_clips_var.get(),
-                            "thumbnail_path": getattr(self.app_state, "current_thumbnail_path", None)
-                        }
-                        macro_item_params.update(item_cfg)
-                        
-                        if len(macro.micro_clips) > 1:
-                            macro_item_params.update({
-                                "title": f"{title_base} [Macro Clip {idx_macro+1}]",
-                                "duration": format_seconds_to_mmss(macro.end - macro.start),
-                                "clip_enabled": True,
-                                "clip_start": macro_start_str,
-                                "clip_end": macro_end_str,
-                                "clip_strategy": decide_clip_strategy(self.app_state.current_video_info, macro.start, macro.end),
-                                "macro_clips_data": [
-                                    {
-                                        "start": mc.start,
-                                        "end": mc.end,
-                                        "profile": mc.export_profile,
-                                        "output_suffix": mc.output_name
-                                    }
-                                    for mc in macro.micro_clips
-                                ]
-                            })
-                        else:
-                            mc = macro.micro_clips[0]
-                            macro_item_params.update({
-                                "title": f"{title_base} (Clip {mc.id})",
-                                "duration": format_seconds_to_mmss(mc.end - mc.start),
-                                "clip_enabled": True,
-                                "clip_start": format_seconds_to_mmss(mc.start),
-                                "clip_end": format_seconds_to_mmss(mc.end),
-                                "clip_strategy": decide_clip_strategy(self.app_state.current_video_info, mc.start, mc.end),
-                                "export_profile": mc.export_profile,
-                            })
-                        
-                        with self.app_state._lock:
-                            task = DownloadTask(**macro_item_params)
-                            self.app_state.queue_list.append(task)
-                        added_count += 1
-                    
-                    self.url_panel.set_url("")
-                    self.preview_panel.hide()
-                    self.progress_panel.update_status("●", THEME_ACCENT_BLUE, TRANSLATIONS[self.app_state.current_lang]["lbl_status_added"].format(count=added_count))
-                else:
-                    # Normal single item or clipping off
-                    item_id = uuid.uuid4().hex
-                    task_params = {
-                        "id": item_id,
-                        "url": url,
-                        "title": title_base,
-                        "duration": duration,
-                        "preset": item_cfg.get("video_profile", "Custom"),
-                        "status": "Bekliyor" if lang == "tr" else ("Esperando" if lang == "es" else "Waiting"),
-                        "clip_strategy": clip_strategy,
-                        "thumbnail_path": getattr(self.app_state, "current_thumbnail_path", None)
-                    }
-                    task_params.update(item_cfg)
-                    with self.app_state._lock:
-                        task = DownloadTask(**task_params)
-                        self.app_state.queue_list.append(task)
-                    
-                    self.url_panel.set_url("")
-                    self.preview_panel.hide()
-                    self.progress_panel.update_status("●", THEME_ACCENT_BLUE, TRANSLATIONS[self.app_state.current_lang]["lbl_status_ready"])
+                self.url_panel.set_url("")
+                self.preview_panel.hide()
+                self.progress_panel.update_status("●", THEME_ACCENT_BLUE, TRANSLATIONS[self.app_state.current_lang]["lbl_status_ready"])
+            
+            # Post updates to progress panel if automated rules were applied
+            if item_cfg.get("options_source") == "Default" and self.app_state.current_video_info and not self.app_state.is_batch_mode:
+                ch_id = self.app_state.current_video_info.get("channel_id")
+                if ch_id:
+                    from core.history import get_channel_rule
+                    rule = get_channel_rule(ch_id)
+                    if rule and rule.get("settings_dict"):
+                        ch_name = rule.get("channel_name") or ch_id
+                        msg = f"[Kanal Kuralı] {ch_name} için otomatik kural uygulandı.\n"
+                        self.progress_panel.append_log_batch([msg])
+        else:
+            messagebox.showwarning(TRANSLATIONS[self.app_state.current_lang]["lbl_dialog_warning_title"], error)
 
         self.queue_panel.update_list()
 
