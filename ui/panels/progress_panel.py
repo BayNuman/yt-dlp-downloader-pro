@@ -7,6 +7,7 @@ from ui.theme import (
     THEME_ACCENT_GREEN, THEME_ACCENT_RED, TRANSLATIONS
 )
 from core.app_state import AppState, TaskStatus
+from core.utils import parse_speed_to_mbps
 
 class ProgressPanel(ctk.CTkFrame):
     def __init__(self, parent, state: AppState, on_start_callback, on_cancel_callback, on_open_folder_callback, **kwargs):
@@ -432,7 +433,7 @@ class ProgressPanel(ctk.CTkFrame):
             self.reset_sparkline()
 
     def push_speed(self, speed_str: str):
-        raw_mbps = self._parse_speed_to_mbps(speed_str)
+        raw_mbps = parse_speed_to_mbps(speed_str)
         # EMA Low-pass filter (α = 0.2, 1-α = 0.8) to keep transitions smooth
         self.ema_smoothed = (raw_mbps * 0.2) + (self.ema_smoothed * 0.8)
         
@@ -445,27 +446,6 @@ class ProgressPanel(ctk.CTkFrame):
         self.speed_write_idx = 0
         self.ema_smoothed = 0.0
         self._redraw_sparkline()
-
-    def _parse_speed_to_mbps(self, speed_str: str) -> float:
-        if not speed_str:
-            return 0.0
-        import re
-        # Parse value and unit (e.g. 15.3MiB/s, 200B/s)
-        match = re.search(r"([\d\.]+)\s*([a-zA-Z/]+)", speed_str)
-        if not match:
-            return 0.0
-        val = float(match.group(1))
-        unit = match.group(2).lower()
-        
-        if "g" in unit:
-            return val * 1024.0
-        elif "m" in unit:
-            return val
-        elif "k" in unit:
-            return val / 1024.0
-        elif "b" in unit:
-            return val / (1024.0 * 1024.0)
-        return val
 
     def _redraw_sparkline(self):
         """O(1) coordinate update on single canvas elements — completely leaks-free."""

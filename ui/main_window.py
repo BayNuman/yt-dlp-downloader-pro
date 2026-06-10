@@ -148,7 +148,6 @@ class MainWindow(ctk.CTk):
             "Would you like to install it automatically in the background?"
         )
         
-        from tkinter import messagebox
         if messagebox.askyesno(title, msg):
             def installer_thread():
                 try:

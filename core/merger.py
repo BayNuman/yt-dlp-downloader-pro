@@ -80,7 +80,11 @@ class LosslessMerger:
             print(f"[Merge Engine] Finished successfully: {output_path}")
 
             if cleanup:
-                self._cleanup_clips(clip_paths)
+                if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                    self._cleanup_clips(clip_paths)
+                else:
+                    print(f"[Merge Engine] Warning: Merged output file {output_path} is missing or empty. Skipping cleanup to prevent data loss.")
+                    return False
 
             return True
 

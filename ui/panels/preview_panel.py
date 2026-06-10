@@ -10,6 +10,7 @@ from ui.theme import (
 from core.app_state import AppState
 from core.clip import format_seconds_to_mmss, validate_clip_range, parse_time_to_seconds
 from core.profiles import EXPORT_PROFILES
+from core.suggester import SmartFormatSuggester
 
 from ui.components.clip_row import ClipRow
 
@@ -563,7 +564,6 @@ class PreviewPanel(ctk.CTkFrame):
             self.chapters_frame.grid_remove()
 
         # Heuristic Suggester Integration
-        from core.suggester import SmartFormatSuggester
         suggester = SmartFormatSuggester()
         suggested_key = suggester.analyze(meta)
         

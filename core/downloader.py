@@ -81,70 +81,7 @@ def kill_all_active_subprocesses():
                     pass
         active_subprocesses.clear()
 
-# Low-pass Downsampled Waveform Generation
-def generate_audio_waveform(task, input_file_path: str) -> str:
-    """
-    Generates a 320x60 static waveform image for audio files under app_data_dir / waveforms / waveform_{id}.png.
-    Utilizes Downsampling (aresample=1000) for extremely fast O(1) performance (1.5s vs 45s).
-    """
-    try:
-        from core.history import get_app_data_dir
-        if not input_file_path or not os.path.exists(input_file_path):
-            return None
-        waveforms_dir = get_app_data_dir() / "waveforms"
-        waveforms_dir.mkdir(parents=True, exist_ok=True)
-        output_png = waveforms_dir / f"waveform_{task.id}.png"
-        ffmpeg_bin = resolve_ffmpeg_path()
-        cmd = [
-            ffmpeg_bin, "-y",
-            "-i", input_file_path,
-            "-filter_complex", "aresample=1000,showwavespic=s=320x60:colors=#6366f1",
-            "-frames:v", "1",
-            str(output_png)
-        ]
-        startupinfo = None
-        if os.name == 'nt':
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        proc = None
-        try:
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                startupinfo=startupinfo,
-                shell=False
-            )
-            register_active_subprocess(proc)
-            proc.wait(timeout=10)
-        finally:
-            if proc:
-                unregister_active_subprocess(proc)
-        if output_png.exists():
-            return str(output_png)
-    except Exception as e:
-        logging.error(f"[warning] Waveform generation failed: {e}")
-    return None
-
-# Single-Threaded Background Waveform Generation Queue
-waveform_queue = queue.Queue()
-
-def _waveform_worker():
-    while True:
-        task, file_path, callback = waveform_queue.get()
-        try:
-            png_path = generate_audio_waveform(task, file_path)
-            if png_path:
-                callback(png_path)
-        except Exception as e:
-            logging.error(f"[warning] Waveform worker error: {e}")
-        finally:
-            waveform_queue.task_done()
-
-threading.Thread(target=_waveform_worker, daemon=True, name="waveform-worker").start()
-
-def enqueue_waveform_generation(task, file_path, callback):
-    waveform_queue.put((task, file_path, callback))
+from core.waveform import enqueue_waveform_generation
 
 def _on_waveform_done(task_id, png_path, ui_queue):
     update_download_status(task_id, "COMPLETED", thumbnail_path=png_path)
