@@ -166,9 +166,9 @@ class AppController:
                         macro_item_params.update({k: v for k, v in base_cfg.items() if k not in macro_item_params})
                         
                         # Pack target micro-clips inside macro task metadata so downloader knows how to slice them later
-                        macro_item_params["_micro_clips"] = [
+                        macro_item_params["macro_clips_data"] = [
                             {"start": m.start, "end": m.end, "profile": m.export_profile, "name": m.output_name}
-                            for m in macro.sub_clips
+                            for m in macro.micro_clips
                         ]
                         
                         task = DownloadTask(**macro_item_params)
