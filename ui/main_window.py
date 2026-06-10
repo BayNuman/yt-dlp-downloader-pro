@@ -20,7 +20,7 @@ from PIL import Image, ImageTk
 # Core imports
 from core.app_state import AppState, TaskStatus, save_app_preferences
 from core.downloader import run_queue_executor, resolve_ffmpeg_path, kill_all_active_subprocesses
-from core.history import init_db, add_download_record, get_all_downloads, _db_writer
+from core.history import init_db, add_download_record, get_all_downloads, shutdown_db
 from core.clip import decide_clip_strategy, parse_time_to_seconds, format_seconds_to_mmss
 
 # UI imports
@@ -1301,7 +1301,7 @@ class MainWindow(ctk.CTk):
             pass
 
         try:
-            _db_writer.shutdown()
+            shutdown_db()
         except Exception:
             pass
             

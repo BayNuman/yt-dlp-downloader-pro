@@ -42,8 +42,8 @@ YOUTUBE_FALLBACK_EXTRACTOR_ARGS = "youtube:player-client=tv"
 def safe_get(obj, key, default=None):
     if isinstance(obj, dict):
         val = obj.get(key, default)
-        return default if val is None else val
-    val = getattr(obj, key, default)
+    else:
+        val = getattr(obj, key, default)
     return default if val is None else val
 
 def safe_set(obj, key, value):

@@ -91,6 +91,10 @@ class DatabaseWriter:
 # Global Singleton Database Writer Instance
 _db_writer = DatabaseWriter()
 
+def shutdown_db() -> None:
+    """Gracefully terminates the background SQLite worker thread."""
+    _db_writer.shutdown()
+
 def init_db():
     # Init db is run once synchronously at startup, before thread dispatchers
     conn = connect_db()

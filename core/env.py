@@ -8,7 +8,7 @@ def refresh_path_env() -> None:
     to pick up newly installed tools (like Deno or Node.js via winget) without requiring 
     a system or application restart.
     """
-    if os.name != 'nt':
+    if sys.platform != "win32":
         return
 
     try:
