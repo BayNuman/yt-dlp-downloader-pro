@@ -45,6 +45,13 @@ class QueuePanel(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
         self._build_ui()
 
+    def destroy(self):
+        try:
+            self.image_loader_pool.shutdown(wait=False)
+        except Exception:
+            pass
+        super().destroy()
+
     def _async_load_thumbnail(self, thumb_path: str, label_widget):
         if not thumb_path or not os.path.exists(thumb_path):
             return
@@ -148,10 +155,9 @@ class QueuePanel(ctk.CTkFrame):
 
     def _clear_history_db(self):
         lang = self.app_state.current_lang
-        confirm = messagebox.askyesno(
-            TRANSLATIONS[lang]["lbl_dialog_close_title"],
-            "Tüm indirme geçmişini silmek istediğinize emin misiniz?" if lang == "tr" else "Are you sure you want to clear all history?"
-        )
+        title = TRANSLATIONS[lang].get("lbl_dialog_close_title", "Exit")
+        msg = TRANSLATIONS[lang].get("msg_confirm_clear_history", "Are you sure you want to clear all history?")
+        confirm = messagebox.askyesno(title, msg)
         if confirm:
             clear_all_downloads()
             self.update_list()

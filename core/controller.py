@@ -40,6 +40,32 @@ class AppController:
 
         threading.Thread(target=run, daemon=True, name="metadata-fetcher").start()
 
+    def run_metadata_fetch(self, url: str, cookies_file: str, browser_cookies: str, scratch_dir: Path, app_data_dir: Path, on_success_callback, on_error_callback):
+        """Brokers background metadata fetching, mutates state metadata info, and triggers callbacks."""
+        def internal_success(metadata):
+            self.state.current_thumbnail_path = metadata.get("thumbnail_path")
+            self.state.current_video_info = metadata.get("raw_info")
+            on_success_callback(metadata)
+
+        def internal_error(err_str):
+            on_error_callback(err_str)
+
+        self.fetch_metadata_async(
+            url=url,
+            cookies_file=cookies_file,
+            browser_cookies=browser_cookies,
+            scratch_dir=scratch_dir,
+            app_data_dir=app_data_dir,
+            on_success=internal_success,
+            on_error=internal_error
+        )
+
+    def get_mode_from_format(self, format_desc: str) -> str:
+        """Deduces the download mode (Audio vs Video) from a historical format description string."""
+        if "Audio" in format_desc or "mp3" in format_desc:
+            return "Audio"
+        return "Video"
+
     def check_duplicate(self, url: str, item_cfg: dict) -> tuple[bool, str, str]:
         """
         Runs a 3-tier check (RAM Active Queue, Database History, and Disk Presence) 
@@ -80,6 +106,28 @@ class AppController:
         to the state queue list.
         Returns: (success_bool, message_str, added_count)
         """
+        # Validate export profile duration limits
+        if item_cfg.get("clip_enabled") and not self.state.is_batch_mode:
+            from core.profiles import EXPORT_PROFILES
+            for mc_cfg in multi_clips:
+                profile_name = mc_cfg.get("profile", "Default (No Profile)")
+                profile = EXPORT_PROFILES.get(profile_name)
+                diff = mc_cfg["end"] - mc_cfg["start"]
+                if profile and profile.max_duration and diff > profile.max_duration:
+                    error_msg = (
+                        f"Seçilen kırpma süresi ({diff:.1f}s), '{profile.name}' profilinin "
+                        f"maksimum sınırını ({profile.max_duration}s) aşıyor! Lütfen süreyi kısaltın."
+                        if lang == "tr"
+                        else (
+                            f"El tiempo seleccionado ({diff:.1f}s) supera el límite máximo "
+                            f"del perfil '{profile.name}' ({profile.max_duration}s). Por favor acórtelo."
+                            if lang == "es"
+                            else f"Selected clip duration ({diff:.1f}s) exceeds '{profile.name}' "
+                                 f"profile maximum limit ({profile.max_duration}s)! Please shorten the clip."
+                        )
+                    )
+                    return False, error_msg, 0
+
         valid_task_fields = {f.name for f in dataclasses.fields(DownloadTask)}
         base_cfg = {k: v for k, v in item_cfg.items() if k in valid_task_fields}
 

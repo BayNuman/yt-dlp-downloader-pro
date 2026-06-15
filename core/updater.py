@@ -7,6 +7,11 @@ import hashlib
 from dataclasses import dataclass
 import yt_dlp
 
+# Pinned stable release hashes to protect against supply chain compromise (Offline Trusted Roots)
+KNOWN_VERSIONS = {
+    "2026.06.09": "c76f5713437df4c8996fb92427ae41e4649b934ca495991b7852b855e3a51fef", # Example hash for release
+}
+
 @dataclass
 class UpdatePayload:
     """Strongly-typed data container representing an update check result."""
@@ -16,6 +21,24 @@ class UpdatePayload:
     sha256: str = None
     action: str = "upgrade"  # "upgrade" or "downgrade"
     is_fallback: bool = False
+
+def verify_hash_against_pypi(version: str, sha256_val: str) -> bool:
+    """Queries the official PyPI JSON API for the specific version and verifies if the hash is registered."""
+    pypi_version_url = f"https://pypi.org/pypi/yt-dlp/{version}/json"
+    try:
+        req = urllib.request.Request(pypi_version_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=4.0) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            urls = data.get("urls", [])
+            for url_entry in urls:
+                digests = url_entry.get("digests", {})
+                pypi_sha256 = digests.get("sha256", "")
+                if pypi_sha256 and pypi_sha256.lower() == sha256_val.lower():
+                    print(f"[Updater] Hash {sha256_val} verified against official PyPI release.")
+                    return True
+    except Exception as e:
+        print(f"[Updater] Failed to verify hash against PyPI: {e}")
+    return False
 
 def calculate_sha256(file_path: str) -> str:
     """Computes the SHA-256 checksum of a local file in memory-efficient chunks."""
@@ -163,6 +186,24 @@ def execute_update(payload: UpdatePayload, scratch_dir: str) -> tuple[bool, str]
                 except Exception:
                     pass
                 return False, "Güvenlik İhlali: SHA-256 Bütünlük Doğrulaması Başarısız! (Security Breach: Checksum Mismatch)"
+                
+            # Verify update source authenticity (local pin or PyPI registration)
+            is_trusted = False
+            latest_ver = payload.latest_version
+            if latest_ver in KNOWN_VERSIONS:
+                if KNOWN_VERSIONS[latest_ver].lower() == payload.sha256.lower():
+                    is_trusted = True
+                    print(f"[Updater] Version {latest_ver} verified locally via KNOWN_VERSIONS.")
+            else:
+                if verify_hash_against_pypi(latest_ver, payload.sha256):
+                    is_trusted = True
+                    
+            if not is_trusted:
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+                return False, "Güvenlik İhlali: Sürüm imza/özeti güvenilmeyen bir kaynaktan geliyor! (Security Breach: Untrusted Update Package)"
         
         # 3. Secure Installation
         result = subprocess.run(

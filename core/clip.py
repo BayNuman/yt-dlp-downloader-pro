@@ -6,21 +6,30 @@ def parse_time_to_seconds(s: str) -> Optional[float]:
     s = s.strip()
     if not s:
         return None
+    is_negative = False
+    if s.startswith("-"):
+        is_negative = True
+        s = s[1:].strip()
     # Check format HH:MM:SS or MM:SS
+    val = None
     if ":" in s:
         parts = s.split(":")
         try:
             if len(parts) == 2:
-                return int(parts[0]) * 60 + float(parts[1])
+                val = int(parts[0]) * 60 + float(parts[1])
             elif len(parts) == 3:
-                return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+                val = int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
         except ValueError:
             return None
-    # Parse pure seconds string
-    try:
-        return float(s)
-    except ValueError:
-        return None
+    else:
+        # Parse pure seconds string
+        try:
+            val = float(s)
+        except ValueError:
+            return None
+    if val is not None:
+        return -val if is_negative else val
+    return None
 
 def format_seconds_to_mmss(seconds: float) -> str:
     h = int(seconds // 3600)
@@ -35,15 +44,15 @@ def validate_clip_range(start_str: str, end_str: str, total_duration: float) -> 
     end = parse_time_to_seconds(end_str)
     
     if start is None or end is None:
-        return "Geçersiz zaman formatı. MM:SS veya saniye girin."
+        return "err_clip_format"
     if start < 0:
-        return "Başlangıç negatif olamaz."
+        return "err_clip_negative"
     if start >= end:
-        return "Bitiş, başlangıçtan büyük olmalı."
+        return "err_clip_order"
     if total_duration > 0 and end > total_duration:
         end = total_duration  # Silent correction to end of video
     if (end - start) < 0.5:
-        return "En az 0.5 saniyelik bir aralık seçin."
+        return "err_clip_min"
         
     return start, end
 

@@ -1,10 +1,4 @@
-<div align="center">
-
-<img src="assets/screenshots/preview.gif" alt="yt-dlp Downloader Pro" width="680"/>
-
 # yt-dlp Downloader Pro
-
-**One-click video and music downloader — Windows & Android**
 
 <p align="center">
   <b>🇺🇸 English</b> &nbsp;·&nbsp;
@@ -12,56 +6,127 @@
   <a href="README.es.md">🇪🇸 Español</a>
 </p>
 
-Download videos, music, and playlists from YouTube, Vimeo, SoundCloud, and 1000+ other sites.  
-Trimming, format conversion, queue management — all in one powerful application.
-
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows-0078d4?logo=windows)](https://github.com/BayNuman/yt-dlp-downloader-pro/releases)
 [![Platform: Android](https://img.shields.io/badge/Platform-Android%208%2B-3ddc84?logo=android)](https://github.com/BayNuman/yt-dlp-downloader-pro/releases)
 [![Android CI](https://github.com/BayNuman/yt-dlp-downloader-pro/actions/workflows/android-ci.yml/badge.svg)](https://github.com/BayNuman/yt-dlp-downloader-pro/actions/workflows/android-ci.yml)
 [![Stars](https://img.shields.io/github/stars/BayNuman/yt-dlp-downloader-pro?style=social)](https://github.com/BayNuman/yt-dlp-downloader-pro/stargazers)
-[![Patreon](https://img.shields.io/badge/Patreon-Sponsor-F96854?logo=patreon)](https://patreon.com/BayNuman?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink)
 
-[**⬇️ Download Windows**](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp_Downloader_Pro_Setup.exe) &nbsp;·&nbsp;
-[**📱 Android APK**](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/app-release.apk) &nbsp;·&nbsp;
-[**🐛 Report Bug**](https://github.com/BayNuman/yt-dlp-downloader-pro/issues/new?template=bug_report.md) &nbsp;·&nbsp;
-[**💡 Request Feature**](https://github.com/BayNuman/yt-dlp-downloader-pro/issues/new?template=feature_request.md) &nbsp;·&nbsp;
-[**🧡 Sponsor on Patreon**](https://patreon.com/BayNuman?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink)
+> A premium, high-performance video and audio downloader with a semi-translucent glassmorphic interface. It supports time-range clipping, SponsorBlock integration, parallel downloads queue, smart directory structures, and a 9:16 vertical crop generator for Instagram Reels & YouTube Shorts. Powered by `yt-dlp` and `FFmpeg`.
 
+<div align="center">
+  <img src="assets/screenshots/preview.gif" alt="yt-dlp Downloader Pro Preview" width="680"/>
 </div>
 
 ---
 
-## ✨ Why is it different?
+## 📥 Fast Downloads
 
-There are dozens of yt-dlp frontends. This project is different because it offers:
-
-| Feature | Other GUIs | This Application |
-|---|---|---|
-| Range clipping (trimming) | ❌ | ✅ Double-handle range slider |
-| Chapter clipping | ❌ | ✅ One-click auto fill range |
-| Multi-clip from same video | ❌ | ✅ Greedy interval merging |
-| Instagram Reels / Shorts export | ❌ | ✅ 9:16 center auto-crop |
-| Discord/WhatsApp size limit | ❌ | ✅ Automatic bitrate calculation |
-| YouTube 403 auto fallback | ❌ | ✅ TV Client automatic retry |
-| Smart format suggestion | ❌ | ✅ Automatic metadata analysis |
-| Parallel queue downloads | ❌ in most | ✅ ThreadPoolExecutor |
+| Platform | Type | Release Package |
+| :--- | :--- | :--- |
+| **🖥️ Windows** | Installer (Recommended) | [📥 Download Setup.exe](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp_Downloader_Pro_Setup.exe) |
+| **🖥️ Windows** | Portable | [📥 Download Portable.exe](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp.Downloader.Pro.exe) |
+| **📱 Android** | APK (Android 8.0+) | [📥 Download App.apk](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/app-release.apk) |
 
 ---
 
-## ⬇️ Installation
+## 🚀 Key Features
 
-> You do not need to install Python, ffmpeg, or use a terminal. Everything is packaged and ready to run.
+| Feature | Other Frontends | yt-dlp Downloader Pro |
+| :--- | :--- | :--- |
+| **Time-Range Clipping** | ❌ (Full download only) | ✅ Dual-handle interactive range slider |
+| **Smart Multi-Clip** | ❌ | ✅ LeetCode 56 Greedy Interval Merging |
+| **Crop to Reels/Shorts** | ❌ | ✅ 9:16 smart center-crop format profile |
+| **SponsorBlock** | ❌ | ✅ Auto-skip / cut sponsor segments |
+| **403 Client Fallback** | ❌ | ✅ TV Client automatic fallback signature bypass |
+| **Smart Audio Waveform** | ❌ | ✅ 1.5s envelope waveform preview |
+| **Parallel Queue** | ❌ in most | ✅ High-performance thread-safe queue |
 
-| Platform | Package | Download |
-|---|---|---|
-| 🖥️ Windows | Installer (.exe) — Recommended | [📥 Download Setup](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp_Downloader_Pro_Setup.exe) |
-| 🖥️ Windows | Portable (.exe) — No Install | [📥 Download Portable](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp.Downloader.Pro.exe) |
-| 📱 Android | APK (Android 8.0+) | [📥 Download APK](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/app-release.apk) |
+---
 
-**Windows SmartScreen Warning:** If you get a SmartScreen alert, click "More Info" → "Run Anyway". The application is completely open source; you can review the codebase yourself.
+## 📦 Installation & Setup
 
-**Android Installation:** Go to Settings → Apps → Allow installation from unknown sources → Tap the downloaded APK to install.
+### Platform Prebuilt Binaries
+
+#### 🖥️ Windows Setup
+1. Download [yt-dlp_Downloader_Pro_Setup.exe](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp_Downloader_Pro_Setup.exe).
+2. Double-click the installer and complete the setup wizard (takes ~30 seconds).
+3. *SmartScreen Note:* If Windows SmartScreen blocks launch, click **More Info** → **Run Anyway**.
+
+#### 📱 Android Setup
+1. Download [app-release.apk](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/app-release.apk).
+2. Grant **Install from Unknown Sources** in your Android security settings.
+3. Open the APK file and tap **Install**.
+
+---
+
+## 🛠️ Building From Source
+
+### Desktop Requirements
+- **Python** (v3.10 or higher)
+- **FFmpeg** and **FFprobe** (will be automatically downloaded by the builder script if missing)
+- **Inno Setup 6** (required only if packaging the Windows Setup Installer)
+
+### Desktop Run & Package Commands
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/BayNuman/yt-dlp-downloader-pro.git
+   cd yt-dlp-downloader-pro
+   ```
+2. **Install Python dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. **Launch the application:**
+   ```bash
+   python app.py
+   ```
+4. **Compile the standalone EXE and Windows Installer:**
+   ```bash
+   python build_full_distribution.py
+   ```
+
+### Android Requirements & Build
+- **Android Studio** Hedgehog (2023.1.1) or higher
+- **JDK 17**
+- **Android SDK API 26+**
+
+```bash
+cd android
+./gradlew assembleRelease
+```
+*The release APK will be generated at: `android/app/build/outputs/apk/release/app-release.apk`*
+
+---
+
+## 🛠️ Usage Examples
+
+### Visual GUI Mode
+Simply run the application or double-click the shortcut. Paste the URL, choose your format profile (e.g. *Best Quality*, *Full HD 1080p*, *Instagram Reels*), select clipping ranges if needed, and hit **Start Downloads**.
+
+### Headless CLI Mode (Windows Compiled Binary)
+The compiled standalone executable intercepts arguments using a custom CLI bootloader. If run with `-m yt_dlp`, it acts as a headless command-line interface:
+```bash
+"yt-dlp Downloader Pro.exe" -m yt_dlp "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --format bestvideo+bestaudio
+```
+
+### Programmatic Code Hook (Python)
+Developers can import modules from `core/` directly. For example, to generate raw command arguments programmatically:
+```python
+from core.command_builder import build_ytdlp_args
+from core.app_state import DownloadTask
+
+# Create state representation of a download task
+task = DownloadTask(
+    url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    preset="1080p",
+    output_dir="downloads"
+)
+
+# Generate pure yt-dlp CLI arguments
+args = build_ytdlp_args(task)
+print("yt-dlp arguments:", args)
+```
 
 ---
 
@@ -95,116 +160,9 @@ There are dozens of yt-dlp frontends. This project is different because it offer
 
 ---
 
-## 🎯 Features
+## 🏗️ Core Architecture
 
-### ✂️ Clip Engine — Unique to this App
-
-Download only the part of the video you want. Extract a 30-second highlight from a 30-minute video in seconds.
-
-- **Double-handle slider** — drag the left and right handles to select start/end times.
-- **Chapter support** — clicking a video chapter automatically fills the range fields.
-- **Multi-clip download** — select multiple time ranges from the same URL and queue them all at once.
-- **Accurate/Fast cuts** — supports both keyframe snap (instant) or millisecond accuracy (local re-encoding).
-- **Hybrid strategy** — optimizes downloads using stream seeking if you select less than 15% of the video, and buffered downloads + local trims for larger selections.
-
-### 🎨 Export Profiles
-
-| Profile | Output |
-|---|---|
-| Instagram Reels (max 90s) | Center crop to 9:16 vertical MP4 |
-| YouTube Shorts (max 60s) | Center crop to 9:16 vertical MP4 |
-| Discord (max 25MB) | Automatically calculates target video bitrate |
-| WhatsApp (max 16MB) | Automatically calculates target video bitrate |
-| Meme/GIF Creator | 15fps, 480px width, high-quality palette optimizer |
-| Voice Note / Audiobook | Mono channel, 48kbps speech optimized M4A |
-
-### 📋 Queue Management
-
-- Parallel downloads using Python's `ThreadPoolExecutor` (configurable `max_workers`).
-- Persistent download history (SQLite) — re-download with a single click.
-- Saved custom templates (e.g. Podcast MP3, 4K Archive).
-- Configuration options: playlist range, bandwidth speed limits, concurrent fragments.
-
-### 🔧 Advanced Capabilities
-
-- **SponsorBlock** — automatically skip sponsor segments.
-- **Cookie Support** — load cookies from a text file or import them from browsers (Chrome, Edge, Firefox, etc.).
-- **Auto-fallback 403** — automatically switches client to TV interface on HTTP 403 signature errors.
-- Metadata embedding, high-res thumbnail downscaling, and subtitles downloading.
-- **Smart Suggester** — profiles videos by dimensions, length, and tags to recommend vertical crop, standard MP4, or audiobook MP3.
-- Extra yt-dlp parameter fields for full CLI command flexibility.
-
-### 🌍 Platform Overview
-
-| Feature | Windows | Android |
-|---|---|---|
-| Dark / Light Theme | ✅ | ✅ |
-| Turkish / English / Spanish | ✅ | ✅ |
-| Background Downloads | ✅ | ✅ ForegroundService |
-| Direct Share Menu Import | — | ✅ Share Intent |
-| Notifications | ✅ Sliding Toast | ✅ Native Notifications |
-
----
-
-## 🚀 Quick Start
-
-### Windows
-
-```
-1. Download the "yt-dlp_Downloader_Pro_Setup.exe" installer.
-2. Double-click it and click "Next" → "Install" (takes ~30 seconds).
-3. Open the desktop shortcut, paste a URL, and click Download!
-```
-
-### Android
-
-```
-1. Download the "app-release.apk" file to your phone.
-2. Grant "Install from Unknown Sources" permission.
-3. Open the APK file, approve permissions, and start downloading!
-```
-
----
-
-## 🛠️ Build from Source
-
-### Requirements (Windows)
-
-- Python 3.10+
-- Inno Setup 6 (for packaging the setup installer)
-
-```bash
-git clone https://github.com/BayNuman/yt-dlp-downloader-pro.git
-cd yt-dlp-downloader-pro
-
-pip install customtkinter yt-dlp pillow requests pyinstaller tkinterdnd2
-
-# Run the app
-python app.py
-
-# Package the standalone EXE + setup installer
-python build_full_distribution.py
-```
-
-The build script automatically downloads bundled dependencies (ffmpeg.exe, ffprobe.exe), wraps them using PyInstaller, and compiles the Inno Setup installer.
-
-### Requirements (Android)
-
-- Android Studio Hedgehog (2023.1.1)+
-- JDK 17+
-- Android SDK API 26+
-
-```bash
-cd android
-./gradlew assembleRelease
-# Output will be generated at: android/app/build/outputs/apk/release/app-release.apk
-```
-
----
-
-## 🏗️ Architecture
-
-```
+```text
 yt-dlp-downloader-pro/
 │
 ├── 🖥️  Desktop (Python + CustomTkinter)
@@ -220,12 +178,12 @@ yt-dlp-downloader-pro/
 │   │   ├── history.py            # SQLite + thread-local connection cache + WAL mode
 │   │   ├── presets.py            # JSON presets with in-memory cache layer
 │   │   ├── updater.py            # PyPI package version checker
-│   │   └── env.py                # Live Windows registry path reloader
+│   │   └── env.py                # Windows registry path reloader
 │   └── ui/
 │       ├── theme.py              # HSL color palettes + i18n translations (en/tr/es)
 │       ├── main_window.py        # Central GUI layout with coalesced UI queue drain
-│       ├── components/toast.py   # BaseToast OOP hierarchy (ActionableToast, NotificationToast)
-│       └── panels/               # Modular panels with smart widget diffing (Queue, Advanced, Preview)
+│       ├── components/toast.py   # BaseToast OOP hierarchy
+│       └── panels/               # Modular panels (Queue, Advanced, Preview)
 │
 └── 📱  Android (Kotlin + Jetpack Compose)
     └── android/app/src/main/
@@ -235,27 +193,18 @@ yt-dlp-downloader-pro/
         │   ├── DownloadModels.kt       # Request/Event/Record models + JSON serialization
         │   ├── YtDlpCommandBuilder.kt  # CLI builder with clip sections optimization
         │   ├── YtDlpRunner.kt          # Regex-based stdout parser + multi-path fallback
-        │   └── algorithms/ClipOptimizer.kt  # Greedy interval merging
+        │   └── algorithms/ClipOptimizer.kt  # Greedy interval merging (LeetCode 56)
         └── ui/
             ├── DownloaderScreen.kt
-            ├── DownloaderViewModel.kt   # 4-flow RuntimeState architecture
+            ├── DownloaderViewModel.kt   # Consolidated RuntimeState architecture
             └── theme/Translations.kt
 ```
-
-**Key Architectural Choices:**
-- Decoupled `core/` architecture — maintains no GUI states, easily portable.
-- `command_builder.py` contains only pure functions with no `self` references, ideal for testing.
-- Thread-safe `AppState` with `RLock` — shared between download threads and UI safely.
-- Thread-local SQLite connection cache with WAL mode — eliminates redundant open/close overhead.
-- Smart widget diffing in `QueuePanel` — only rebuilds cards when task list composition changes, eliminating screen flickering.
-- Android `RuntimeState` data class consolidates 11 StateFlows into a single type-safe 4-flow combine architecture.
-- Central download archive at `app-data-dir/download_archive.txt` — prevents re-downloads across folders on both platforms.
 
 ---
 
 ## 🌍 Supported Platforms
 
-Powered by yt-dlp, this application supports over **1000+ sites**:
+Powered by `yt-dlp`, this application supports over **1000+ sites**:
 
 YouTube • YouTube Music • Vimeo • SoundCloud • Twitter/X • Instagram • TikTok • Facebook • Dailymotion • Twitch • Reddit • Bandcamp • and more...
 
@@ -267,34 +216,41 @@ YouTube • YouTube Music • Vimeo • SoundCloud • Twitter/X • Instagram �
 
 - [ ] macOS desktop support
 - [ ] Android range clip engine (slider selection + conversion profiles)
-- [ ] Browser extension (Chrome/Firefox one-click integration)
-- [ ] Scheduled downloads (e.g., start at 2:00 AM)
-- [ ] Plex / Jellyfin integration (auto-tagging media library directories)
+- [ ] Browser extension (one-click integration)
+- [ ] Scheduled downloads (deferred countdown timer)
+- [ ] Plex / Jellyfin auto-tagging integration
 - [ ] Thumbnail filmstrip slider
-
-Have a suggestion? [Open a feature request!](https://github.com/BayNuman/yt-dlp-downloader-pro/issues/new?template=feature_request.md)
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome — bug fixes, translations, or new profile ideas!
-
+Contributions are welcome!
 1. Read our [Contributing Guide](CONTRIBUTING.md)
-2. Browse our [Open Issues](https://github.com/BayNuman/yt-dlp-downloader-pro/issues)
-3. Fork the repository, create your branch, and open a Pull Request!
+2. Fork the repository, create your feature branch, and open a Pull Request.
 
 ---
 
 ## ⚖️ Legal Disclaimer
 
-This software is a GUI client interface for [yt-dlp](https://github.com/yt-dlp/yt-dlp). Users are solely responsible for complying with the terms of service of the respective platforms they download media from. Please download only materials you have legal rights to access.
+This software is a GUI client interface for [yt-dlp](https://github.com/yt-dlp/yt-dlp). Users are solely responsible for complying with the terms of service of the respective platforms they download media from.
 
 ---
 
 ## 📄 License
 
 Distributed under the MIT License. See [LICENSE](LICENSE) for details.
+
+---
+
+## 💡 Best Practices (Dos & Don'ts)
+
+| Dos | Don'ts |
+| :--- | :--- |
+| **Use relative paths** (`./assets/...` or repo-relative links) for files and screenshots. | **Avoid absolute paths** (`C:/Users/name/...`) which fail on other environments. |
+| **Specify the exact programming language** in code fence blocks (e.g. ` ```bash `, ` ```python `) to enable code coloring. | **Do not write unformatted blocks** or generic ` ``` ` fences. |
+| **Utilize tables and emojis** to split walls of text and reduce cognitive load. | **Avoid writing generic "Works on my machine" instructions** without detailing minimum system requirements. |
+| **Keep installation instructions up-to-date** and test commands locally before releasing. | **Do not leave stale setup steps** or undocumented dependencies that break Developer Experience (DX). |
 
 ---
 

@@ -23,7 +23,6 @@ from core.downloader import run_queue_executor, resolve_ffmpeg_path, kill_all_ac
 from core.history import init_db, add_download_record, get_all_downloads, shutdown_db, get_channel_rule
 from core.clip import decide_clip_strategy, parse_time_to_seconds, format_seconds_to_mmss
 from core.controller import AppController
-from core.profiles import EXPORT_PROFILES
 
 # UI imports
 from ui.theme import (
@@ -447,9 +446,6 @@ class MainWindow(ctk.CTk):
                 except Exception as e:
                     print(f"Error loading thumbnail in UI: {e}")
 
-            self.app_state.current_thumbnail_path = thumb_path
-            self.app_state.current_video_info = metadata.get("raw_info")
-
             fetched_metadata = {
                 "url": url,
                 "title": metadata["title"],
@@ -469,14 +465,14 @@ class MainWindow(ctk.CTk):
             self.ui_queue.put(("metadata_error", err_str))
 
         from core.history import get_app_data_dir
-        self.controller.fetch_metadata_async(
+        self.controller.run_metadata_fetch(
             url=url,
             cookies_file=cookies_file,
             browser_cookies=browser_cookies,
             scratch_dir=self.scratch_dir,
             app_data_dir=get_app_data_dir(),
-            on_success=on_success,
-            on_error=on_error
+            on_success_callback=on_success,
+            on_error_callback=on_error
         )
 
     def _on_chapter_clicked(self, start_seconds: float, end_seconds: float, chapter_title: str):
@@ -530,28 +526,9 @@ class MainWindow(ctk.CTk):
                 "export_profile": "Default (No Profile)"
             })
 
-        # 3. Validate export profile duration limits
+        # 3. Prepare multi-clip selections
         if item_cfg.get("clip_enabled") and not self.app_state.is_batch_mode:
             multi_clips = self.preview_panel.get_multi_clips()
-            for mc_cfg in multi_clips:
-                profile_name = mc_cfg.get("profile", "Default (No Profile)")
-                profile = EXPORT_PROFILES.get(profile_name)
-                diff = mc_cfg["end"] - mc_cfg["start"]
-                if profile and profile.max_duration and diff > profile.max_duration:
-                    error_msg = (
-                        f"Seçilen kırpma süresi ({diff:.1f}s), '{profile.name}' profilinin "
-                        f"maksimum sınırını ({profile.max_duration}s) aşıyor! Lütfen süreyi kısaltın."
-                        if lang == "tr"
-                        else (
-                            f"El tiempo seleccionado ({diff:.1f}s) supera el límite máximo "
-                            f"del perfil '{profile.name}' ({profile.max_duration}s). Por favor acórtelo."
-                            if lang == "es"
-                            else f"Selected clip duration ({diff:.1f}s) exceeds '{profile.name}' "
-                                 f"profile maximum limit ({profile.max_duration}s)! Please shorten the clip."
-                        )
-                    )
-                    messagebox.showwarning(TRANSLATIONS[self.app_state.current_lang]["lbl_dialog_warning_title"], error_msg)
-                    return
         else:
             multi_clips = []
 
@@ -599,6 +576,20 @@ class MainWindow(ctk.CTk):
             for task in self.app_state.queue_list:
                 if task.id == task_id:
                     task.cancel_event.set()
+                    proc = getattr(task, "_process", None)
+                    if proc:
+                        try:
+                            if getattr(task, "is_paused", False):
+                                if os.name == 'nt':
+                                    import ctypes
+                                    ctypes.windll.ntdll.NtResumeProcess(proc._handle)
+                                else:
+                                    import signal
+                                    os.kill(proc.pid, signal.SIGCONT)
+                                task.is_paused = False
+                            proc.terminate()
+                        except Exception:
+                            pass
                     lang = self.app_state.current_lang
                     task.status = "İptal Ediliyor" if lang == "tr" else ("Cancelando" if lang == "es" else "Cancelling")
                     task.status_code = TaskStatus.CANCELLED
@@ -609,12 +600,10 @@ class MainWindow(ctk.CTk):
         # Feature 3.2: Re-download callback
         self.url_panel.set_url(url)
         self.app_state.url = url
-        # Toggle mode based on history format description
-        if "Audio" in format_desc or "mp3" in format_desc:
-            self.advanced_panel.mode_var.set("Audio")
-        else:
-            self.advanced_panel.mode_var.set("Video")
-        self.advanced_panel._on_mode_changed(self.advanced_panel.mode_var.get())
+        # Toggle mode based on history format description via Controller
+        mode = self.controller.get_mode_from_format(format_desc)
+        self.advanced_panel.mode_var.set(mode)
+        self.advanced_panel._on_mode_changed(mode)
         
         # Trigger queue panel tab view switch back to Active Queue
         self.queue_panel.tab_selector.set(TRANSLATIONS[self.app_state.current_lang]["tab_active"])

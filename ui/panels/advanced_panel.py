@@ -674,9 +674,12 @@ class AdvancedPanel(ctk.CTkFrame):
         self.user_explicit = True
 
     def _prompt_save_preset(self):
+        lang = self.app_state.current_lang
+        prompt_txt = TRANSLATIONS[lang].get("msg_prompt_preset_name", "Enter new preset profile name:")
+        prompt_title = TRANSLATIONS[lang].get("msg_save_preset_title", "Save Preset Profile")
         dialog = ctk.CTkInputDialog(
-            text="Yeni Profil İsmi Girin / Enter Preset Name:",
-            title="Save Preset Profile"
+            text=prompt_txt,
+            title=prompt_title
         )
         name = dialog.get_input()
         if name and name.strip():
@@ -700,13 +703,18 @@ class AdvancedPanel(ctk.CTkFrame):
             save_preset(name, preset_dict)
             self._load_presets_dropdown()
             self.presets_dropdown_var.set(name)
-            messagebox.showinfo("Başarılı", f"'{name}' profil şablonu başarıyla kaydedildi.")
+            title = TRANSLATIONS[lang].get("msg_success_title", "Success")
+            msg = TRANSLATIONS[lang].get("msg_preset_saved", "'{}' preset profile successfully saved.").format(name)
+            messagebox.showinfo(title, msg)
 
     def _delete_selected_preset(self):
         name = self.presets_dropdown_var.get()
         if not name:
             return
-        if messagebox.askyesno("Emin misiniz?", f"'{name}' şablonunu silmek istediğinize emin misiniz?"):
+        lang = self.app_state.current_lang
+        title = TRANSLATIONS[lang].get("msg_confirm_delete_title", "Are you sure?")
+        msg = TRANSLATIONS[lang].get("msg_confirm_delete", "Are you sure you want to delete '{}' template?").format(name)
+        if messagebox.askyesno(title, msg):
             delete_preset(name)
             self._load_presets_dropdown()
 

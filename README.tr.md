@@ -1,10 +1,4 @@
-<div align="center">
-
-<img src="assets/screenshots/preview.gif" alt="yt-dlp Downloader Pro" width="680"/>
-
 # yt-dlp Downloader Pro
-
-**Tek tıkla video ve müzik indirme — Windows & Android**
 
 <p align="center">
   <a href="README.md">🇺🇸 English</a> &nbsp;·&nbsp;
@@ -12,56 +6,127 @@
   <a href="README.es.md">🇪🇸 Español</a>
 </p>
 
-YouTube, Vimeo, SoundCloud ve 1000+ siteden video, müzik ve playlist indirin.  
-Kırpma, dönüştürme, kuyruk yönetimi — hepsi tek uygulamada.
-
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows-0078d4?logo=windows)](https://github.com/BayNuman/yt-dlp-downloader-pro/releases)
 [![Platform: Android](https://img.shields.io/badge/Platform-Android%208%2B-3ddc84?logo=android)](https://github.com/BayNuman/yt-dlp-downloader-pro/releases)
 [![Android CI](https://github.com/BayNuman/yt-dlp-downloader-pro/actions/workflows/android-ci.yml/badge.svg)](https://github.com/BayNuman/yt-dlp-downloader-pro/actions/workflows/android-ci.yml)
 [![Stars](https://img.shields.io/github/stars/BayNuman/yt-dlp-downloader-pro?style=social)](https://github.com/BayNuman/yt-dlp-downloader-pro/stargazers)
-[![Patreon](https://img.shields.io/badge/Patreon-Sponsor-F96854?logo=patreon)](https://patreon.com/BayNuman?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink)
 
-[**⬇️ Windows İndir**](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp_Downloader_Pro_Setup.exe) &nbsp;·&nbsp;
-[**📱 Android APK**](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/app-release.apk) &nbsp;·&nbsp;
-[**🐛 Hata Bildir**](https://github.com/BayNuman/yt-dlp-downloader-pro/issues/new?template=bug_report.md) &nbsp;·&nbsp;
-[**💡 Özellik İste**](https://github.com/BayNuman/yt-dlp-downloader-pro/issues/new?template=feature_request.md) &nbsp;·&nbsp;
-[**🧡 Patreon'da Destek Olun**](https://patreon.com/BayNuman?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink)
+> Yarı saydam cam derinliği (glassmorphic) arayüzüne sahip, Windows ve Android için geliştirilmiş premium, yüksek performanslı bir video ve ses indirme aracı. Çift tutamaçlı zaman aralığı kırpma, SponsorBlock entegrasyonu, paralel indirme kuyruğu, akıllı klasör yapıları ve Instagram Reels / YouTube Shorts için 9:16 dikey otomatik kırpma motoru sunar. Gücünü `yt-dlp` ve `FFmpeg`'den alır.
 
+<div align="center">
+  <img src="assets/screenshots/preview.gif" alt="yt-dlp Downloader Pro Önizleme" width="680"/>
 </div>
 
 ---
 
-## ✨ Rakiplerden Farkı Ne?
+## 📥 Hızlı İndirme Linkleri
 
-Piyasada onlarca yt-dlp arayüzü var. Bu proje farklı çünkü:
-
-| Özellik | Diğer GUI'ler | Bu Uygulama |
-|---|---|---|
-| Zaman aralığı kırpma (clip) | ❌ | ✅ Çift tutamaçlı slider |
-| Chapter desteği | ❌ | ✅ Tıkla, otomatik doldur |
-| Aynı videodan çoklu klip | ❌ | ✅ Greedy interval merging |
-| Instagram Reels / Shorts export | ❌ | ✅ 9:16 otomatik kırpma |
-| Discord/WhatsApp boyut sınırı | ❌ | ✅ Bitrate otomatik hesaplanır |
-| YouTube 403 otomatik fallback | ❌ | ✅ TV Client retry |
-| Akıllı format önerisi | ❌ | ✅ Metadata analizi |
-| Paralel indirme | ❌ çoğunda | ✅ ThreadPoolExecutor |
+| Platform | Tür | Yayın Paketi |
+| :--- | :--- | :--- |
+| **🖥️ Windows** | Kurulumcu (Önerilen) | [📥 Setup.exe İndir](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp_Downloader_Pro_Setup.exe) |
+| **🖥️ Windows** | Taşınabilir (Kurulumsuz) | [📥 Portable.exe İndir](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp.Downloader.Pro.exe) |
+| **📱 Android** | APK (Android 8.0+) | [📥 Uygulama APK İndir](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/app-release.apk) |
 
 ---
 
-## ⬇️ Kurulum
+## 🚀 Öne Çıkan Özellikler
 
-> Python, ffmpeg veya terminal kurmanıza gerek yok. Her şey paketlenmiş halde gelir.
+| Özellik | Diğer Arayüzler | yt-dlp Downloader Pro |
+| :--- | :--- | :--- |
+| **Zaman Aralığı Kırpma** | ❌ (Sadece tam video indirilir) | ✅ Çift tutamaçlı etkileşimli zaman slider'ı |
+| **Akıllı Çoklu Kırpma** | ❌ | ✅ LeetCode 56 Greedy Interval Merging |
+| **Reels/Shorts Çıktısı** | ❌ | ✅ 9:16 dikey dairesel odaklı otomatik dikey kırpma |
+| **SponsorBlock** | ❌ | ✅ Sponsor bölümlerini otomatik atlama ve kesme |
+| **403 Hata Bypass** | ❌ | ✅ TV istemcisi otomatik yedek imza mekanizması |
+| **Ses Dalga Formu (Waveform)** | ❌ | ✅ 1.5 saniyede düşük gecikmeli envelope görsel önizlemesi |
+| **Paralel Kuyruk** | ❌ çoğunda | ✅ Yüksek performanslı ve thread-safe kuyruk yönetimi |
 
-| Platform | Paket | İndir |
-|---|---|---|
-| 🖥️ Windows | Kurulum (.exe) — Önerilen | [📥 Setup İndir](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp_Downloader_Pro_Setup.exe) |
-| 🖥️ Windows | Taşınabilir (.exe) — Kurulumsuz | [📥 Portable İndir](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp.Downloader.Pro.exe) |
-| 📱 Android | APK (Android 8.0+) | [📥 APK İndir](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/app-release.apk) |
+---
 
-**Windows'ta SmartScreen uyarısı alırsanız:** "Daha fazla bilgi" → "Yine de çalıştır" seçin. Uygulama açık kaynaktır, kod güvenliğini kendiniz inceleyebilirsiniz.
+## 📦 Kurulum ve Çalıştırma
 
-**Android'de kurulum:** Ayarlar → Uygulamalar → Bilinmeyen kaynaklardan yüklemeye izin ver → APK'ya tıkla.
+### Hazır Derlenmiş Sürümler
+
+#### 🖥️ Windows Kurulumu
+1. [yt-dlp_Downloader_Pro_Setup.exe](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/yt-dlp_Downloader_Pro_Setup.exe) dosyasını indirin.
+2. Kurulum programını çift tıklayıp yönergeleri takip edin (~30 saniye sürer).
+3. *SmartScreen Uyarısı:* Windows SmartScreen uyarısı alırsanız **Ek Bilgi** → **Yine de Çalıştır** seçeneğine tıklayın.
+
+#### 📱 Android Kurulumu
+1. [app-release.apk](https://github.com/BayNuman/yt-dlp-downloader-pro/releases/latest/download/app-release.apk) dosyasını telefonunuza indirin.
+2. Android güvenlik ayarlarınızda **Bilinmeyen Kaynaklardan Yükleme** iznini etkinleştirin.
+3. İndirilen APK dosyasını açıp **Yükle** butonuna dokunun.
+
+---
+
+## 🛠️ Kaynak Koddan Derleme
+
+### Masaüstü Gereksinimleri
+- **Python** (v3.10 veya üzeri)
+- **FFmpeg** ve **FFprobe** (Eksikse derleyici script tarafından otomatik olarak indirilir)
+- **Inno Setup 6** (Yalnızca Windows Setup Installer paketlemek istiyorsanız gereklidir)
+
+### Masaüstü Komutları (Çalıştırma & Paketleme)
+1. **Depoyu klonlayın:**
+   ```bash
+   git clone https://github.com/BayNuman/yt-dlp-downloader-pro.git
+   cd yt-dlp-downloader-pro
+   ```
+2. **Python bağımlılıklarını yükleyin:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. **Uygulamayı başlatın:**
+   ```bash
+   python app.py
+   ```
+4. **Tek başına çalışan (.EXE) ve Windows Kurulumcuyu derleyin:**
+   ```bash
+   python build_full_distribution.py
+   ```
+
+### Android Gereksinimleri & Derleme
+- **Android Studio** Hedgehog (2023.1.1) veya üzeri
+- **JDK 17**
+- **Android SDK API 26+**
+
+```bash
+cd android
+./gradlew assembleRelease
+```
+*Derlenen APK çıktısı şu dizinde oluşur: `android/app/build/outputs/apk/release/app-release.apk`*
+
+---
+
+## 🛠️ Kullanım Örnekleri
+
+### Görsel Arayüz (GUI) Modu
+Uygulamayı çalıştırın veya kısayoluna çift tıklayın. Adresi yapıştırın, format profilinizi seçin (örneğin *En İyi Kalite*, *Full HD 1080p*, *Instagram Reels*), gerekirse zaman aralığı sınırlarını belirleyin ve **İndirmeleri Başlat** butonuna basın.
+
+### Başsız CLI Modu (Windows Derlenmiş Dosya)
+Tek başına çalışan derlenmiş EXE, argümanları yakalayan özel bir CLI önyükleyici içerir. `-m yt_dlp` bayrağı ile çalıştırıldığında arka planda doğrudan terminal aracı gibi çalışır:
+```bash
+"yt-dlp Downloader Pro.exe" -m yt_dlp "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --format bestvideo+bestaudio
+```
+
+### Programatik Kod Çağrısı (Python)
+Geliştiriciler `core/` dizinindeki modülleri doğrudan projelerine dahil edebilirler. Örneğin, programatik olarak raw yt-dlp argümanları üretmek için:
+```python
+from core.command_builder import build_ytdlp_args
+from core.app_state import DownloadTask
+
+# İndirme görevinin durum temsilini oluşturun
+task = DownloadTask(
+    url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    preset="1080p",
+    output_dir="downloads"
+)
+
+# Saf yt-dlp CLI argümanlarını üretin
+args = build_ytdlp_args(task)
+print("yt-dlp argümanları:", args)
+```
 
 ---
 
@@ -69,8 +134,8 @@ Piyasada onlarca yt-dlp arayüzü var. Bu proje farklı çünkü:
 
 <table>
 <tr>
-<td><img src="assets/screenshots/desktop_dark_main.png" alt="Windows — Dark Mode" width="340"/></td>
-<td><img src="assets/screenshots/desktop_light_main.png" alt="Windows — Light Mode" width="340"/></td>
+<td><img src="assets/screenshots/desktop_dark_main.png" alt="Windows — Koyu Tema" width="340"/></td>
+<td><img src="assets/screenshots/desktop_light_main.png" alt="Windows — Açık Tema" width="340"/></td>
 </tr>
 <tr>
 <td align="center"><em>Windows — Koyu Tema</em></td>
@@ -80,14 +145,14 @@ Piyasada onlarca yt-dlp arayüzü var. Bu proje farklı çünkü:
 
 <table>
 <tr>
-<td><img src="assets/screenshots/android_dark.jpg" alt="Android — Download" width="160"/></td>
-<td><img src="assets/screenshots/android_queue.png" alt="Android — Queue" width="160"/></td>
-<td><img src="assets/screenshots/android_history.png" alt="Android — History" width="160"/></td>
-<td><img src="assets/screenshots/android_settings.png" alt="Android — Settings" width="160"/></td>
+<td><img src="assets/screenshots/android_dark.jpg" alt="Android — İndir" width="160"/></td>
+<td><img src="assets/screenshots/android_queue.png" alt="Android — Kuyruk" width="160"/></td>
+<td><img src="assets/screenshots/android_history.png" alt="Android — Geçmiş" width="160"/></td>
+<td><img src="assets/screenshots/android_settings.png" alt="Android — Ayarlar" width="160"/></td>
 </tr>
 <tr>
-<td align="center"><em>İndir</em></td>
-<td align="center"><em>Kuyruk</em></td>
+<td align="center"><em>İndirme Ekranı</em></td>
+<td align="center"><em>İndirme Kuyruğu</em></td>
 <td align="center"><em>Geçmiş</em></td>
 <td align="center"><em>Ayarlar</em></td>
 </tr>
@@ -95,215 +160,106 @@ Piyasada onlarca yt-dlp arayüzü var. Bu proje farklı çünkü:
 
 ---
 
-## 🎯 Özellikler
+## 🏗️ Proje Mimarisi
 
-### ✂️ Clip Engine — Rakiplerde Yok
-
-Videodun sadece istediğiniz bölümünü indirin. 30 dakikalık bir videodan 30 saniyelik kısmı saniyeler içinde alın.
-
-- **Çift tutamaçlı slider** — başlangıç ve bitiş noktalarını sürükleyerek seçin
-- **Chapter desteği** — video bölümlerine tıklamak başlangıç/bitiş süresini otomatik doldurur
-- **Aynı videodan çoklu klip** — bir URL'den birden fazla zaman aralığı seçin, tek seferde indirin
-- **Hassas / Hızlı kesim** — keyframe snap (hızlı) veya milisaniye hassasiyeti (yeniden kodlama)
-- **Hibrit strateji** — videonun %15'inden azı isteniyorsa stream seek, büyük parçalarda buffered download + lokal trim
-
-### 🎨 Export Profilleri
-
-| Profil | Çıktı |
-|---|---|
-| Instagram Reels (max 90s) | 9:16 merkezi kırpma, MP4 |
-| YouTube Shorts (max 60s) | 9:16 merkezi kırpma, MP4 |
-| Discord (max 25MB) | Otomatik bitrate hesabı |
-| WhatsApp (max 16MB) | Otomatik bitrate hesabı |
-| GIF Oluşturucu | 15fps, 480px, palette optimizasyonu |
-| Sesli Not / Sesli Kitap | Mono, 48kbps, M4A |
-
-### 📋 İndirme Yönetimi
-
-- Paralel indirme kuyruğu (ThreadPoolExecutor, max_workers ayarlanabilir)
-- Kalıcı indirme geçmişi (SQLite) — tek tıkla tekrar indir
-- Özel şablon kaydetme (Podcast MP3, 4K Arşiv vb.)
-- Playlist aralığı, hız limiti, eşzamanlı parça sayısı
-
-### 🔧 Gelişmiş
-
-- SponsorBlock — sponsor segmentlerini otomatik kes
-- Çerez desteği — özel .txt dosyası veya tarayıcıdan (Chrome, Edge, Firefox...)
-- YouTube 403 otomatik TV Client fallback
-- Metadata, thumbnail, altyazı indirme
-- Akıllı format önerisi — müzik mi, podcast mi, dikey video mu otomatik tahmin eder
-- Ek yt-dlp parametresi alanı — tam esneklik
-
-### 🌍 Platform
-
-| Özellik | Windows | Android |
-|---|---|---|
-| Koyu / Açık tema | ✅ | ✅ |
-| Türkçe / İngilizce / İspanyolca | ✅ | ✅ |
-| Arka planda indirme | ✅ | ✅ ForegroundService |
-| Paylaş menüsünden URL alma | — | ✅ Share Intent |
-| Bildirim | ✅ Toast | ✅ Notification |
-
----
-
-## 🚀 Hızlı Başlangıç
-
-### Windows
-
-```
-1. yt-dlp_Downloader_Pro_Setup.exe dosyasını indirin
-2. Çift tıklayın, "İleri" → "Kur" (yaklaşık 30 saniye)
-3. Masaüstü kısayolundan açın, URL yapıştırın, İndir'e basın
-```
-
-### Android
-
-```
-1. app-release.apk dosyasını telefonunuza indirin
-2. "Bilinmeyen kaynaktan yükle" iznini verin
-3. APK'ya dokunun, izinleri onaylayın, kullanmaya başlayın
-```
-
----
-
-## 🛠️ Kaynaktan Derleme
-
-### Gereksinimler (Windows)
-
-- Python 3.10+
-- Inno Setup 6 (installer için)
-
-```bash
-git clone https://github.com/BayNuman/yt-dlp-downloader-pro.git
-cd yt-dlp-downloader-pro
-
-pip install customtkinter yt-dlp pillow requests pyinstaller tkinterdnd2
-
-# Uygulamayı çalıştır
-python app.py
-
-# Standalone .exe + installer derle
-python build_full_distribution.py
-```
-
-Build scripti otomatik olarak ffmpeg.exe ve ffprobe.exe'yi indirir, PyInstaller ile paketler ve Inno Setup installer oluşturur.
-
-### Gereksinimler (Android)
-
-- Android Studio Hedgehog (2023.1.1)+
-- JDK 17+
-- Android SDK API 26+
-
-```bash
-cd android
-./gradlew assembleRelease
-# Çıktı: android/app/build/outputs/apk/release/app-release.apk
-```
-
----
-
-## 🏗️ Mimari
-
-```
+```text
 yt-dlp-downloader-pro/
 │
-├── 🖥️  Desktop (Python + CustomTkinter)
-│   ├── app.py                    # Bootstrap — sadece main()
+├── 🖥️  Masaüstü (Python + CustomTkinter)
+│   ├── app.py                    # Giriş noktası (Bootstrap) - sadece main() çağırır
 │   ├── core/
-│   │   ├── app_state.py          # Thread-safe durum motoru (RLock + otomatik dil algılama)
-│   │   ├── command_builder.py    # Pure function — yt-dlp argüman üreteci
-│   │   ├── downloader.py         # ThreadPoolExecutor kuyruk yöneticisi
-│   │   ├── clip.py               # Greedy interval merge + hibrit strateji motoru
-│   │   ├── merger.py             # FFmpeg Concat Demuxer
-│   │   ├── profiles.py           # Polymorphic export profilleri
-│   │   ├── suggester.py          # Heuristik format öneri motoru
-│   │   ├── history.py            # SQLite + thread-local bağlantı cache + WAL modu
-│   │   ├── presets.py            # JSON preset (bellek-içi cache katmanı)
-│   │   ├── updater.py            # PyPI versiyon kontrolü (arka planda)
-│   │   └── env.py                # Windows registry PATH yenileyici
+│   │   ├── app_state.py          # RLock ile korunan thread-safe durum motoru + dil algılama
+│   │   ├── command_builder.py    # Saf fonksiyonlar - yt-dlp CLI argümanlarını üretir
+│   │   ├── downloader.py         # ThreadPoolExecutor eşzamanlı kuyruk yürütücüsü
+│   │   ├── clip.py               # LeetCode 56 Greedy Interval Merging + seek yöneticisi
+│   │   ├── merger.py             # FFmpeg Concat Demuxer kayıpsız birleştirme motoru
+│   │   ├── profiles.py           # Polimorfik ffmpeg çıktı dönüştürme profilleri
+│   │   ├── suggester.py          # Helezonik analiz tabanlı öneri motoru
+│   │   ├── history.py            # SQLite + thread-local bağlantı önbelleği + WAL modu
+│   │   ├── presets.py            # Bellek önbellekli JSON şablonları katmanı
+│   │   ├── updater.py            # PyPI paket güncelleme denetleyicisi
+│   │   └── env.py                # Canlı Windows kayıt defteri (Registry) yenileyici
 │   └── ui/
-│       ├── theme.py              # HSL renk paletleri + i18n çeviriler (en/tr/es)
-│       ├── main_window.py        # Ana pencere + birleştirilmiş UI kuyruk boşaltma
-│       ├── components/toast.py   # BaseToast OOP hiyerarşisi (ActionableToast, NotificationToast)
-│       └── panels/               # Akıllı widget diffing ile modüler paneller
+│       ├── theme.py              # HSL renk paletleri + i18n çevirileri (en/tr/es)
+│       ├── main_window.py        # Coalesced UI kuyruk drenajlı ana arayüz tasarımı
+│       ├── components/toast.py   # BaseToast nesne yönelimli bildirim mimarisi
+│       └── panels/               # Modüler paneller (Kuyruk, Gelişmiş, Önizleme)
 │
 └── 📱  Android (Kotlin + Jetpack Compose)
     └── android/app/src/main/
         ├── MainActivity.kt
-        ├── service/DownloadService.kt  # ForegroundService + yaşam döngüsü bağlama
+        ├── service/DownloadService.kt  # Yaşam döngüsü bağlamalı ön plan servis
         ├── data/
-        │   ├── DownloadModels.kt       # Request/Event/Record modelleri + JSON serileştirme
-        │   ├── YtDlpCommandBuilder.kt  # CLI builder + klip kesit optimizasyonu
-        │   ├── YtDlpRunner.kt          # Regex tabanlı stdout parser + çoklu yol fallback
-        │   └── algorithms/ClipOptimizer.kt  # Greedy interval merging
+        │   ├── DownloadModels.kt       # İstek/Olay/Kayıt modelleri + JSON serileştirme
+        │   ├── YtDlpCommandBuilder.kt  # Kırpma aralığı optimizasyonlu komut oluşturucu
+        │   ├── YtDlpRunner.kt          # Regex tabanlı çıktı ayrıştırıcı + çoklu yol alternatifi
+        │   └── algorithms/ClipOptimizer.kt  # LeetCode 56 aralık birleştirme algoritması
         └── ui/
             ├── DownloaderScreen.kt
-            ├── DownloaderViewModel.kt   # 4-flow RuntimeState mimarisi
+            ├── DownloaderViewModel.kt   # Birleştirilmiş RuntimeState mimarisi
             └── theme/Translations.kt
 ```
 
-**Temel tasarım kararları:**
-- `core/` katmanı UI'dan tamamen bağımsız — Android'e taşınabilir
-- `command_builder.py` pure function — `self` gerektirmez, unit test edilebilir
-- Thread-safe `AppState` ile `RLock` — indirme thread'leri ve UI arasında güvenli paylaşım
-- Thread-local SQLite bağlantı cache + WAL modu — gereksiz open/close yükü sıfırlanır
-- `QueuePanel` akıllı widget diffing — kart listesi kompozisyonu değişmediğinde rebuild yapılmaz, titreme önlenir
-- Android `RuntimeState` data class — 11 StateFlow tek bir type-safe 4-flow combine mimarisinde birleştirildi
-- Merkezi indirme arşivi `app-data-dir/download_archive.txt` — klasörler arası mükerrer indirme önlenir
-
 ---
 
-## 🌍 Desteklenen Siteler
+## 🌍 Desteklenen Platformlar
 
-yt-dlp motoru sayesinde **1000+ site** desteklenir:
+Gücünü `yt-dlp`'den alan bu uygulama **1000'den fazla** web sitesini destekler:
 
 YouTube • YouTube Music • Vimeo • SoundCloud • Twitter/X • Instagram • TikTok • Facebook • Dailymotion • Twitch • Reddit • Bandcamp • ve daha fazlası...
 
-→ [Tam site listesi](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)
+→ [Desteklenen sitelerin tam listesi](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)
 
 ---
 
 ## 🗺️ Yol Haritası
 
 - [ ] macOS masaüstü desteği
-- [ ] Android clip engine (slider + export profilleri)
-- [ ] Tarayıcı eklentisi (Chrome/Firefox)
-- [ ] Zamanlanmış indirme (gece 02:00'de indir)
-- [ ] Plex / Jellyfin media server entegrasyonu
-- [ ] Thumbnail filmstrip slider
-
-Fikriniz mi var? [Özellik isteği açın!](https://github.com/BayNuman/yt-dlp-downloader-pro/issues/new?template=feature_request.md)
+- [ ] Android zaman aralığı kırpma paneli (slider + dönüştürme profilleri)
+- [ ] Tarayıcı eklentisi (tek tıkla entegrasyon)
+- [ ] Zamanlanmış indirmeler (belirli bir saate kurma sayacı)
+- [ ] Plex / Jellyfin medya kütüphanesi otomatik etiketleme entegrasyonu
+- [ ] Küçük resim kare şerit (filmstrip) slider'ı
 
 ---
 
-## 🤝 Katkı
+## 🤝 Katkıda Bulunma
 
-Katkılar memnuniyetle karşılanır — hata düzeltmesi, yeni dil veya özellik fikri.
-
-1. [Katkı Kılavuzu](CONTRIBUTING.md)'nu okuyun
-2. [Açık issue'ları](https://github.com/BayNuman/yt-dlp-downloader-pro/issues) inceleyin
-3. Fork alın, branch açın, Pull Request gönderin
+Katkılarınızı bekliyoruz!
+1. [Katkı Kılavuzumuzu](CONTRIBUTING.md) inceleyin.
+2. Depoyu forklayın, yeni bir özellik dalı açın ve Pull Request gönderin.
 
 ---
 
 ## ⚖️ Yasal Uyarı
 
-Bu yazılım [yt-dlp](https://github.com/yt-dlp/yt-dlp) için bir GUI arayüzüdür. Kullanıcılar, içerik indirdikleri platformların Kullanım Şartlarına uymakla sorumludur. Yalnızca erişim hakkınız olan içerikleri indirin.
+Bu yazılım [yt-dlp](https://github.com/yt-dlp/yt-dlp) için geliştirilmiş bir GUI arayüz istemcisidir. Kullanıcılar, indirme yaptıkları platformların hizmet şartlarına uymaktan tamamen kendileri sorumludur.
 
 ---
 
 ## 📄 Lisans
 
-MIT Lisansı ile dağıtılır. Detaylar için [LICENSE](LICENSE) dosyasına bakın.
+MIT Lisansı ile dağıtılmaktadır. Detaylar için [LICENSE](LICENSE) dosyasına göz atabilirsiniz.
+
+---
+
+## 💡 Yapılması ve Kaçınılması Gerekenler (Dos & Don'ts)
+
+| Yapılması Gerekenler | Kaçınılması Gerekenler |
+| :--- | :--- |
+| **Göreceli yollar kullanın** (repo içi `./assets/...` gibi) resimler ve kısayollar için. | **Mutlak yollar kullanmaktan kaçının** (`C:/Users/isim/...` gibi yollar diğer geliştiricilerde çalışmaz). |
+| **Kod bloklarında dili tam belirtin** (örneğin ` ```bash `, ` ```python `) böylece kod renklendirmesi düzgün çalışır. | **Dili belirtilmemiş** veya boş bırakılmış ` ``` ` blokları kullanmayın. |
+| **Tablolar ve emojiler kullanın** metinleri bölmek ve bilişsel yükü en aza indirmek için. | **Düz yazılardan oluşan devasa metin blokları yazmayın**; bu okuma yorgunluğu yaratır. |
+| **Kurulum talimatlarını güncel tutun** ve yayınlamadan önce komutları yerel terminalde test edin. | **Eski veya eksik bağımlılık talimatları bırakmayın**, bu durum Geliştirici Deneyimini (DX) olumsuz etkiler. |
 
 ---
 
 <div align="center">
 
-Made with ❤️ by [BayNuman](https://github.com/BayNuman)
+[BayNuman](https://github.com/BayNuman) tarafından ❤️ ile yapılmıştır
 
-[**🧡 Patreon'da Destekçi Olun**](https://patreon.com/BayNuman?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink)
+[**🧡 Patreon'da Destek Olun**](https://patreon.com/BayNuman?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink)
 
-Bu proje işinize yaradıysa ⭐ vermeyi unutmayın — başkalarının bulmasına yardımcı olur!
+Bu projeyi yararlı bulduysanız, diğer geliştiricilerin de keşfetmesi için bir ⭐ vermeyi unutmayın!
 
 </div>

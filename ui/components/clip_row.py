@@ -250,7 +250,9 @@ class ClipRow(ctk.CTkFrame):
             self.max_val
         )
         if isinstance(result, str):
-            self.validation_lbl.configure(text=result, text_color=THEME_ACCENT_RED)
+            lang = self.panel.app_state.current_lang
+            translated_err = TRANSLATIONS[lang].get(result, result)
+            self.validation_lbl.configure(text=translated_err, text_color=THEME_ACCENT_RED)
             self.slider.set_warning(True)
         else:
             start, end = result

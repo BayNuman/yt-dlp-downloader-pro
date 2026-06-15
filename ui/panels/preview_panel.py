@@ -288,14 +288,18 @@ class PreviewPanel(ctk.CTkFrame):
         import threading
         from core.services import fetch_sponsor_segments
         
+        self.current_video_id = video_id
+        
         def run():
             segments = fetch_sponsor_segments(video_id)
-            if segments:
-                self.after(0, self._on_sponsor_segments_loaded, segments)
+            if segments and getattr(self, "current_video_id", None) == video_id:
+                self.after(0, self._on_sponsor_segments_loaded, segments, video_id)
                 
         threading.Thread(target=run, daemon=True, name="sponsorblock-fetcher").start()
 
-    def _on_sponsor_segments_loaded(self, segments):
+    def _on_sponsor_segments_loaded(self, segments, video_id):
+        if getattr(self, "current_video_id", None) != video_id:
+            return
         self.sponsor_segments = segments
         if hasattr(self, "btn_clean_sponsors"):
             self.btn_clean_sponsors.configure(state="normal")
@@ -499,6 +503,7 @@ class PreviewPanel(ctk.CTkFrame):
         if hasattr(self, "btn_clean_sponsors"):
             self.btn_clean_sponsors.configure(state="disabled")
         video_id = meta.get("id")
+        self.current_video_id = video_id
         extractor = meta.get("extractor", "").lower()
         if video_id and "youtube" in extractor:
             self._bg_fetch_sponsor_segments(video_id)

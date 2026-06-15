@@ -99,6 +99,7 @@ class UrlPanel(ctk.CTkFrame):
         )
         self.url_textbox.grid(row=0, column=0, sticky="ew")
         self.url_textbox.grid_remove()
+        self.url_textbox.bind("<KeyRelease>", lambda event: self._on_textbox_change())
 
         # Output Folder Section
         self.save_folder_lbl = ctk.CTkLabel(

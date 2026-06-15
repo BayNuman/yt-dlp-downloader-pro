@@ -68,10 +68,23 @@ def unregister_active_subprocess(proc):
     with active_subprocess_lock:
         active_subprocesses.discard(proc)
 
+def resume_subprocess(proc):
+    try:
+        if os.name == 'nt':
+            import ctypes
+            ctypes.windll.ntdll.NtResumeProcess(proc._handle)
+        else:
+            import signal
+            os.kill(proc.pid, signal.SIGCONT)
+    except Exception:
+        pass
+
 def kill_all_active_subprocesses():
     with active_subprocess_lock:
         for proc in list(active_subprocesses):
             try:
+                # Safe resume first to ensure it processes termination signals on POSIX/Windows
+                resume_subprocess(proc)
                 proc.terminate()
                 proc.wait(timeout=1)
             except Exception:
@@ -536,6 +549,7 @@ def resolve_actual_file_path(output_file: str, url: str) -> str:
         
     # If file doesn't exist directly (e.g., due to Windows CP1254 character set conversions or unicode replacement slashes like ⧸),
     # let's find a file in the same directory that has the exact video ID in its name.
+    # To prevent collisions in concurrent downloads (e.g. video and audio of the same ID), we normalize names for comparison.
     try:
         path = Path(output_file)
         parent = path.parent
@@ -547,15 +561,32 @@ def resolve_actual_file_path(output_file: str, url: str) -> str:
         if not video_id:
             return output_file
             
-        # Scan parent folder for files matching video_id
+        # Helper to normalize string names (keep alphanumeric only)
+        expected_norm_no_ext = re.sub(r'[^a-zA-Z0-9]', '', path.stem).lower()
+        
+        # 1. First Pass: Exact extension match + normalized stem match
         for child in parent.iterdir():
             if child.is_file() and video_id in child.name:
-                # If extension matches, this is our file!
+                if child.suffix.lower() == path.suffix.lower():
+                    child_norm_no_ext = re.sub(r'[^a-zA-Z0-9]', '', child.stem).lower()
+                    if child_norm_no_ext == expected_norm_no_ext:
+                        return str(child)
+                        
+        # 2. Second Pass: Allow different media extension + normalized stem match (e.g. merged to .mkv instead of .mp4)
+        MEDIA_SUFFIXES = {".mp4", ".mkv", ".webm", ".mp3", ".m4a", ".aac"}
+        for child in parent.iterdir():
+            if child.is_file() and video_id in child.name:
+                if child.suffix.lower() in MEDIA_SUFFIXES:
+                    child_norm_no_ext = re.sub(r'[^a-zA-Z0-9]', '', child.stem).lower()
+                    if child_norm_no_ext == expected_norm_no_ext:
+                        return str(child)
+                        
+        # 3. Third Pass: Legacy Fallback in case name was severely truncated
+        for child in parent.iterdir():
+            if child.is_file() and video_id in child.name:
                 if child.suffix.lower() == path.suffix.lower():
                     return str(child)
                     
-        # Fallback: if exact suffix didn't match, return any file containing video_id that has a media suffix
-        MEDIA_SUFFIXES = {".mp4", ".mkv", ".webm", ".mp3", ".m4a", ".aac"}
         for child in parent.iterdir():
             if child.is_file() and video_id in child.name:
                 if child.suffix.lower() in MEDIA_SUFFIXES:
@@ -695,6 +726,12 @@ def run_queue_executor(state: AppState, ui_queue, cancel_event) -> None:
         safe_put_ui(ui_queue, ("queue_done", None))
 
 def toggle_pause_task(task):
+    """
+    Toggles the pause/resume state of a download task.
+    Note: This suspends/resumes the external child process (the yt-dlp executable subprocess)
+    at the OS level (using NtSuspendProcess on Windows and SIGSTOP on Unix). It does NOT
+    suspend python worker threads inside our process, avoiding TCP socket corruptions or thread deadlocks.
+    """
     if not hasattr(task, "is_paused"):
         task.is_paused = False
     task.is_paused = not task.is_paused

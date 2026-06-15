@@ -63,18 +63,23 @@ class DatabaseWriter:
             try:
                 item = self._queue.get(timeout=1.0)
                 if item is None:  # Poison pill - exit
+                    self._queue.task_done()
                     break
-                fn, args, kwargs = item
-                fn(conn, *args, **kwargs)
-                conn.commit()
+                
+                try:
+                    fn, args, kwargs = item
+                    fn(conn, *args, **kwargs)
+                    conn.commit()
+                except Exception as e:
+                    print(f"[DB Writer] SQL Write Error: {e}")
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                finally:
+                    self._queue.task_done()
             except queue.Empty:
                 continue
-            except Exception as e:
-                print(f"[DB Writer] SQL Write Error: {e}")
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
         try:
             conn.close()
         except Exception:
@@ -85,8 +90,16 @@ class DatabaseWriter:
         self._queue.put((fn, args, kwargs))
 
     def shutdown(self):
-        """Gracefully terminates the background SQLite worker thread"""
+        """Gracefully terminates the background SQLite worker thread after draining all writes"""
+        try:
+            self._queue.join()
+        except Exception:
+            pass
         self._queue.put(None)
+        try:
+            self._thread.join(timeout=3.0)
+        except Exception:
+            pass
 
 # Global Singleton Database Writer Instance
 _db_writer = DatabaseWriter()

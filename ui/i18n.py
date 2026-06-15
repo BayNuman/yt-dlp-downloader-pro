@@ -147,7 +147,18 @@ TRANSLATIONS = {
         "folder_org_channel": "By Channel",
         "folder_org_year": "By Year",
         "folder_org_format": "By Format",
-        "folder_org_channel_year": "By Channel & Year"
+        "folder_org_channel_year": "By Channel & Year",
+        "err_clip_format": "Invalid time format. Enter MM:SS or seconds.",
+        "err_clip_negative": "Start time cannot be negative.",
+        "err_clip_order": "End time must be greater than start time.",
+        "err_clip_min": "Select an interval of at least 0.5 seconds.",
+        "msg_prompt_preset_name": "Enter new preset profile name:",
+        "msg_save_preset_title": "Save Preset Profile",
+        "msg_preset_saved": "'{}' preset profile successfully saved.",
+        "msg_confirm_delete_title": "Are you sure?",
+        "msg_confirm_delete": "Are you sure you want to delete '{}' template?",
+        "msg_success_title": "Success",
+        "msg_confirm_clear_history": "Are you sure you want to clear all download history?"
     },
     "tr": {
         "title": "yt-dlp Downloader Pro",
@@ -291,7 +302,18 @@ TRANSLATIONS = {
         "folder_org_channel": "Kanala Göre",
         "folder_org_year": "Yıla Göre",
         "folder_org_format": "Formata Göre",
-        "folder_org_channel_year": "Kanal ve Yıla Göre"
+        "folder_org_channel_year": "Kanal ve Yıla Göre",
+        "err_clip_format": "Geçersiz zaman formatı. MM:SS veya saniye girin.",
+        "err_clip_negative": "Başlangıç negatif olamaz.",
+        "err_clip_order": "Bitiş, başlangıçtan büyük olmalı.",
+        "err_clip_min": "En az 0.5 saniyelik bir aralık seçin.",
+        "msg_prompt_preset_name": "Yeni profil şablonu ismini girin:",
+        "msg_save_preset_title": "Profil Şablonunu Kaydet",
+        "msg_preset_saved": "'{}' profil şablonu başarıyla kaydedildi.",
+        "msg_confirm_delete_title": "Emin misiniz?",
+        "msg_confirm_delete": "'{}' şablonunu silmek istediğinize emin misiniz?",
+        "msg_success_title": "Başarılı",
+        "msg_confirm_clear_history": "Tüm indirme geçmişini silmek istediğinize emin misiniz?"
     },
     "es": {
         "title": "yt-dlp Downloader Pro",
@@ -435,6 +457,17 @@ TRANSLATIONS = {
         "folder_org_channel": "Por Canal",
         "folder_org_year": "Por Año",
         "folder_org_format": "Por Formato",
-        "folder_org_channel_year": "Por Canal y Año"
+        "folder_org_channel_year": "Por Canal y Año",
+        "err_clip_format": "Formato de tiempo no válido. Ingrese MM:SS o segundos.",
+        "err_clip_negative": "El tiempo de inicio no puede ser negativo.",
+        "err_clip_order": "El tiempo de finalización debe ser mayor que el de inicio.",
+        "err_clip_min": "Seleccione un intervalo de al menos 0.5 segundos.",
+        "msg_prompt_preset_name": "Ingrese el nombre del nuevo perfil predefinido:",
+        "msg_save_preset_title": "Guardar Perfil Predefinido",
+        "msg_preset_saved": "El perfil predefinido '{}' se guardó con éxito.",
+        "msg_confirm_delete_title": "¿Está seguro?",
+        "msg_confirm_delete": "¿Está seguro de que desea eliminar la plantilla '{}'?",
+        "msg_success_title": "Éxito",
+        "msg_confirm_clear_history": "¿Está seguro de que desea borrar todo el historial de descargas?"
     }
 }
