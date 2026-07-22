@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MAKARA — GUI Konsepti</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --radius: 3px;
+  }
+  html.theme-dark{
+    --bg: #14110F;
+    --bg-elevated: #1C1712;
+    --bg-recessed: #0E0C0A;
+    --ink: #F2ECDF;
+    --ink-dim: #A79C89;
+    --ink-faint: #6E6455;
+    --accent: #E8A33D;
+    --accent-deep: #C97A2B;
+    --accent-ink: #14110F;
+    --teal: #5FB3AC;
+    --success: #7CBB84;
+    --error: #DD6B57;
+    --hairline: rgba(242,236,223,0.10);
+    --hairline-strong: rgba(242,236,223,0.18);
+    --sprocket: rgba(242,236,223,0.14);
+    --shadow: 0 20px 50px rgba(0,0,0,0.45);
+    --scrim: rgba(0,0,0,0.55);
+    color-scheme: dark;
+  }
+  html.theme-light{
+    --bg: #F2E9D8;
+    --bg-elevated: #FFFCF4;
+    --bg-recessed: #E8DCC4;
+    --ink: #241E14;
+    --ink-dim: #7A6F5A;
+    --ink-faint: #A69A82;
+    --accent: #B8681F;
+    --accent-deep: #93531A;
+    --accent-ink: #FFFBF2;
+    --teal: #2F7A78;
+    --success: #4C8F55;
+    --error: #B8412F;
+    --hairline: rgba(36,30,20,0.12);
+    --hairline-strong: rgba(36,30,20,0.22);
+    --sprocket: rgba(36,30,20,0.16);
+    --shadow: 0 20px 40px rgba(90,70,30,0.14);
+    --scrim: rgba(36,30,20,0.35);
+    color-scheme: light;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    transition: background-color .35s ease, color .35s ease;
+  }
+  .mono{ font-family:'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+  .display{ font-family:'Fraunces', serif; font-optical-sizing: auto; }
+
+  /* film grain overlay, very subtle */
+  .grain{
+    position:fixed; inset:0; pointer-events:none; z-index:50; opacity:.035; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ---------- sprocket rail (signature element) ---------- */
+  .sprocket-rail{
+    display:flex; gap:14px; align-items:center; padding: 0 18px; height:100%;
+  }
+  .sprocket-rail span{
+    width:9px; height:9px; border-radius:2px;
+    background: var(--sprocket);
+    flex:none;
+  }
+  .sprocket-rail.vertical{ flex-direction:column; padding: 18px 0; }
+
+  /* progress bar rendered as exposed film frames */
+  .reel-progress{
+    display:flex; gap:3px; height:16px; align-items:center;
+  }
+  .reel-progress i{
+    display:block; width:6px; height:12px; border-radius:1px;
+    background: var(--hairline-strong);
+    flex:none;
+  }
+  .reel-progress i.on{ background: var(--accent); box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 60%, transparent); }
+
+  .app-shell{
+    max-width: 1180px; margin: 0 auto; padding: 0 0 80px;
+  }
+  .topband{
+    height: 34px; background: var(--bg-recessed); border-bottom:1px solid var(--hairline);
+  }
+  header.main{
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 22px 28px 20px; border-bottom:1px solid var(--hairline);
+  }
+  .brand{ display:flex; align-items:center; gap:14px; }
+  .brand-mark{
+    width:38px; height:38px; border-radius:50%;
+    border:2px solid var(--accent);
+    position:relative;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .brand-mark::before{
+    content:''; width:6px; height:6px; border-radius:50%; background:var(--accent);
+  }
+  .brand-mark::after{
+    content:''; position:absolute; inset:6px; border-radius:50%; border:1px dashed var(--hairline-strong);
+  }
+  .brand h1{
+    font-size: 22px; margin:0; letter-spacing: 0.06em; font-weight:600;
+  }
+  .brand p{
+    margin:2px 0 0; font-size:11.5px; color:var(--ink-dim); letter-spacing:0.14em; text-transform:uppercase;
+  }
+  .header-controls{ display:flex; align-items:center; gap:10px; }
+  .pill{
+    display:flex; align-items:center; gap:7px;
+    padding:7px 12px; border-radius:999px; border:1px solid var(--hairline-strong);
+    font-size:12px; color:var(--ink-dim); background: var(--bg-elevated);
+  }
+  .dot-live{ width:6px; height:6px; border-radius:50%; background: var(--success); box-shadow:0 0 6px var(--success); }
+  select.lang{
+    appearance:none; background: var(--bg-elevated); border:1px solid var(--hairline-strong); color:var(--ink);
+    padding:7px 26px 7px 12px; border-radius:999px; font-size:12px; cursor:pointer;
+    background-image: linear-gradient(45deg, transparent 50%, var(--ink-dim) 50%), linear-gradient(135deg, var(--ink-dim) 50%, transparent 50%);
+    background-position: calc(100% - 14px) 55%, calc(100% - 9px) 55%; background-size:5px 5px; background-repeat:no-repeat;
+  }
+  .theme-toggle{
+    display:flex; align-items:center; gap:8px; padding:5px; border-radius:999px;
+    background: var(--bg-elevated); border:1px solid var(--hairline-strong); cursor:pointer;
+  }
+  .theme-toggle button{
+    border:none; background:transparent; color:var(--ink-faint); width:30px; height:30px; border-radius:999px;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px;
+  }
+  .theme-toggle button.active{ background: var(--accent); color: var(--accent-ink); }
+
+  /* URL bar */
+  .url-band{
+    padding: 20px 28px; border-bottom:1px solid var(--hairline);
+    display:grid; grid-template-columns: 1fr auto; gap:12px 14px;
+  }
+  .field{
+    position:relative;
+  }
+  .field label{
+    position:absolute; top:-8px; left:12px; font-size:10px; letter-spacing:0.12em; text-transform:uppercase;
+    background: var(--bg); padding:0 6px; color: var(--ink-faint);
+  }
+  .field input{
+    width:100%; background: var(--bg-elevated); border:1px solid var(--hairline-strong); color:var(--ink);
+    padding:14px 14px; border-radius: var(--radius); font-size:14px; font-family:'IBM Plex Mono', monospace;
+  }
+  .field input:focus{ outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent); }
+  .field input::placeholder{ color: var(--ink-faint); }
+  .btn{
+    border:none; cursor:pointer; font-family:'Inter'; font-weight:600; font-size:13px; letter-spacing:0.02em;
+    padding: 0 22px; border-radius: var(--radius); display:flex; align-items:center; gap:8px;
+  }
+  .btn-primary{ background: var(--accent); color: var(--accent-ink); }
+  .btn-primary:hover{ background: var(--accent-deep); }
+  .btn-ghost{ background: transparent; border:1px solid var(--hairline-strong); color: var(--ink); }
+  .btn-ghost:hover{ border-color: var(--accent); color: var(--accent); }
+  .btn-sm{ padding: 9px 14px; font-size:12px; }
+
+  /* main grid */
+  .main-grid{ display:grid; grid-template-columns: 1.15fr 0.85fr; gap:0; }
+  .col-l{ border-right:1px solid var(--hairline); }
+  .panel{ padding: 24px 28px; border-bottom:1px solid var(--hairline); }
+  .panel-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+  .panel-title{ display:flex; align-items:baseline; gap:10px; }
+  .panel-title .idx{ font-family:'IBM Plex Mono'; font-size:11px; color: var(--accent); }
+  .panel-title h2{ margin:0; font-size:13px; letter-spacing:0.12em; text-transform:uppercase; color: var(--ink-dim); font-weight:600; }
+
+  /* viewfinder */
+  .viewfinder{
+    position:relative; border-radius: var(--radius); overflow:hidden; background: var(--bg-recessed);
+    aspect-ratio: 16/9; border:1px solid var(--hairline-strong);
+  }
+  .viewfinder img{ width:100%; height:100%; object-fit:cover; display:block; opacity:.88; }
+  .viewfinder .corner{ position:absolute; width:20px; height:20px; border-color: var(--accent); opacity:.85; }
+  .viewfinder .corner.tl{ top:10px; left:10px; border-top:2px solid; border-left:2px solid; }
+  .viewfinder .corner.tr{ top:10px; right:10px; border-top:2px solid; border-right:2px solid; }
+  .viewfinder .corner.bl{ bottom:10px; left:10px; border-bottom:2px solid; border-left:2px solid; }
+  .viewfinder .corner.br{ bottom:10px; right:10px; border-bottom:2px solid; border-right:2px solid; }
+  .viewfinder .timecode{
+    position:absolute; bottom:10px; right:10px; background: var(--scrim); color:#fff;
+    font-family:'IBM Plex Mono'; font-size:12px; padding:4px 9px; border-radius:2px; letter-spacing:0.03em;
+  }
+  .viewfinder .rec{
+    position:absolute; top:10px; left:10px; display:flex; align-items:center; gap:6px;
+    background: var(--scrim); color:#fff; font-family:'IBM Plex Mono'; font-size:10.5px; padding:5px 9px 5px 7px; border-radius:2px;
+    letter-spacing:0.1em; text-transform:uppercase;
+  }
+  .viewfinder .rec i{ width:6px; height:6px; border-radius:50%; background:#e8574a; }
+
+  .meta-row{ display:flex; justify-content:space-between; align-items:flex-start; margin-top:14px; gap:12px;}
+  .meta-row h3{ font-family:'Fraunces', serif; font-weight:500; font-size:19px; margin:0 0 4px; line-height:1.25; }
+  .meta-row p{ margin:0; font-size:12.5px; color: var(--ink-dim); }
+  .meta-badge{ font-family:'IBM Plex Mono'; font-size:11px; color:var(--ink-dim); border:1px solid var(--hairline-strong); padding:4px 9px; border-radius:999px; white-space:nowrap; }
+
+  .clip-strip{
+    margin-top:18px; padding:14px; border:1px dashed var(--hairline-strong); border-radius: var(--radius);
+    background: var(--bg-elevated);
+  }
+  .clip-strip .row-label{ display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--ink-dim); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:10px;}
+  .clip-inputs{ display:grid; grid-template-columns: 1fr 1fr auto; gap:10px; align-items:end; }
+  .clip-inputs .field input{ padding:10px 12px; font-size:13px;}
+  .clip-inputs label{ font-size:9.5px; }
+
+  .toggle-sw{ width:34px; height:19px; border-radius:999px; background:var(--hairline-strong); position:relative; flex:none; cursor:pointer;}
+  .toggle-sw.on{ background: var(--accent);}
+  .toggle-sw::after{ content:''; position:absolute; width:15px; height:15px; border-radius:50%; background:var(--bg-elevated); top:2px; left:2px; transition:.2s;}
+  .toggle-sw.on::after{ left:17px; background:#fff;}
+
+  /* tabs */
+  .tabs{ display:flex; gap:4px; border-bottom:1px solid var(--hairline); margin-bottom:18px; }
+  .tab{
+    padding:9px 4px; margin-right:18px; font-size:12.5px; color:var(--ink-faint); cursor:pointer;
+    border-bottom:2px solid transparent; letter-spacing:0.03em; font-weight:500;
+  }
+  .tab.active{ color: var(--ink); border-color: var(--accent); }
+
+  .grid2{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+  .opt-card{
+    border:1px solid var(--hairline-strong); border-radius: var(--radius); padding:11px 12px; cursor:pointer;
+    display:flex; flex-direction:column; gap:3px; background: var(--bg-elevated);
+  }
+  .opt-card.selected{ border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .opt-card .t{ font-size:13px; font-weight:600; }
+  .opt-card .s{ font-size:10.5px; color: var(--ink-faint); font-family:'IBM Plex Mono'; }
+
+  .toggle-row{ display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-bottom:1px solid var(--hairline); }
+  .toggle-row:last-child{ border-bottom:none; }
+  .toggle-row .t{ font-size:13px; }
+  .toggle-row .s{ font-size:11px; color:var(--ink-faint); }
+
+  .preset-row{ display:flex; gap:10px; margin-top:16px; }
+  .preset-row select{
+    flex:1; background: var(--bg-elevated); border:1px solid var(--hairline-strong); color:var(--ink);
+    padding:10px 12px; border-radius: var(--radius); font-size:13px;
+  }
+
+  /* queue */
+  .queue-item{
+    display:grid; grid-template-columns: 44px 1fr auto; gap:14px; align-items:center;
+    padding:14px 0; border-bottom:1px solid var(--hairline);
+  }
+  .queue-item:last-child{ border-bottom:none; }
+  .queue-thumb{ width:44px; height:44px; border-radius:var(--radius); background:var(--bg-recessed); border:1px solid var(--hairline-strong); object-fit:cover; }
+  .q-title{ font-size:13px; font-weight:600; margin:0 0 5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .q-sub{ display:flex; align-items:center; gap:10px; font-size:11px; color:var(--ink-faint); }
+  .status-chip{ font-family:'IBM Plex Mono'; font-size:10px; padding:3px 8px; border-radius:3px; letter-spacing:0.05em; text-transform:uppercase; }
+  .status-chip.downloading{ background: color-mix(in srgb, var(--teal) 18%, transparent); color: var(--teal); }
+  .status-chip.paused{ background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+  .status-chip.finished{ background: color-mix(in srgb, var(--success) 20%, transparent); color: var(--success); }
+  .status-chip.error{ background: color-mix(in srgb, var(--error) 18%, transparent); color: var(--error); }
+  .q-actions{ display:flex; gap:6px; }
+  .icon-btn{
+    width:28px; height:28px; border-radius:var(--radius); border:1px solid var(--hairline-strong); background:transparent;
+    color:var(--ink-dim); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:12px;
+  }
+  .icon-btn:hover{ border-color: var(--accent); color: var(--accent); }
+
+  /* speed scope + console */
+  .scope-box{
+    border:1px solid var(--hairline-strong); border-radius: var(--radius); background: var(--bg-recessed); padding:16px;
+  }
+  .scope-head{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; }
+  .scope-head .speed-val{ font-family:'IBM Plex Mono'; font-size:26px; color: var(--accent); font-weight:600; }
+  .scope-head .speed-unit{ font-size:12px; color:var(--ink-faint); }
+  .scope-grid{ opacity:.5; }
+  .console{
+    margin-top:14px; background: var(--bg-recessed); border:1px solid var(--hairline-strong); border-radius:var(--radius);
+    padding:12px 14px; font-family:'IBM Plex Mono'; font-size:11.5px; color: var(--ink-dim); line-height:1.9;
+    max-height:130px; overflow:auto;
+  }
+  .console .ln{ display:flex; gap:10px; }
+  .console .ln .t{ color: var(--ink-faint); flex:none; }
+  .console .ln.ok .m{ color: var(--success); }
+  .console .ln.warn .m{ color: var(--accent); }
+
+  .transport{ display:flex; gap:10px; margin-top:16px; }
+  .transport .btn{ flex:1; justify-content:center; padding:13px; }
+
+  footer.credits{
+    display:flex; justify-content:space-between; align-items:center; padding:16px 28px; color:var(--ink-faint); font-size:11px;
+  }
+
+  /* toast */
+  .toast-demo{
+    position:fixed; top:22px; right:22px; z-index:60; display:flex; flex-direction:column; gap:10px; align-items:flex-end;
+  }
+  .toast{
+    display:flex; align-items:center; gap:10px; background: var(--bg-elevated); border:1px solid var(--hairline-strong);
+    border-left:3px solid var(--success); padding:12px 16px; border-radius: var(--radius); box-shadow: var(--shadow);
+    font-size:12.5px; min-width:230px;
+  }
+
+  @media (max-width: 860px){
+    .main-grid{ grid-template-columns: 1fr; }
+    .col-l{ border-right:none; }
+    .grid2{ grid-template-columns: 1fr; }
+  }
+
+  ::selection{ background: var(--accent); color: var(--accent-ink); }
+</style>
+</head>
+<body class="theme-dark-body">
+<div class="grain"></div>
+
+<div class="toast-demo">
+  <div class="toast"><span class="mono" style="color:var(--success)">●</span> İndirme tamamlandı — <b>Studio_Session_04.mp4</b></div>
+</div>
+
+<div class="app-shell">
+  <div class="topband">
+    <div class="sprocket-rail" id="sprocketTop"></div>
+  </div>
+
+  <header class="main">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div>
+        <h1 class="display">MAKARA</h1>
+        <p>Tarama &amp; Aktarım Odası</p>
+      </div>
+    </div>
+    <div class="header-controls">
+      <div class="pill"><span class="dot-live"></span> Bağlı · 127.0.0.1:8765</div>
+      <select class="lang">
+        <option>TR</option><option>EN</option><option>ES</option>
+      </select>
+      <div class="theme-toggle" id="themeToggle">
+        <button id="btnDark" title="Karanlık">☾</button>
+        <button id="btnLight" title="Aydınlık">☀</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="url-band">
+    <div class="field">
+      <label>Kaynak URL</label>
+      <input type="text" value="https://www.youtube.com/watch?v=—————————" />
+    </div>
+    <button class="btn btn-primary">Sorgula →</button>
+    <div class="field" style="grid-column:1 / 2;">
+      <label>Çıktı Klasörü</label>
+      <input type="text" value="~/Movies/Makara/Çıktılar" class="mono"/>
+    </div>
+    <button class="btn btn-ghost">Göz At</button>
+  </div>
+
+  <div class="main-grid">
+    <!-- LEFT COLUMN -->
+    <div class="col-l">
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title"><span class="idx mono">01</span><h2>Önizleme</h2></div>
+          <span class="meta-badge">1080p · H.264</span>
+        </div>
+
+        <div class="viewfinder">
+          <img src="https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=1200&auto=format&fit=crop" alt="önizleme"/>
+          <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+          <div class="rec"><i></i> canlı önizleme</div>
+          <div class="timecode">00:12:47 / 00:41:09</div>
+        </div>
+
+        <div class="meta-row">
+          <div>
+            <h3>Stüdyo Kaydı — Oturum No. 04</h3>
+            <p>Kanal: Kadim Ses Atölyesi · 41dk 09sn</p>
+          </div>
+          <span class="meta-badge">184 MB (tahmini)</span>
+        </div>
+
+        <div class="clip-strip">
+          <div class="row-label">
+            <div class="toggle-sw on"></div>
+            <span>Klip Sınırı Belirle</span>
+          </div>
+          <div class="clip-inputs">
+            <div class="field"><label>Başlangıç</label><input class="mono" value="00:03:14"/></div>
+            <div class="field"><label>Bitiş</label><input class="mono" value="00:07:52"/></div>
+            <button class="btn btn-ghost btn-sm">+ Ekle</button>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" style="width:100%; margin-top:16px; padding:14px;">Kuyruğa Ekle (2 Klip)</button>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title"><span class="idx mono">02</span><h2>Kuyruk</h2></div>
+        </div>
+        <div class="tabs">
+          <div class="tab active">İndirme Listesi · 3</div>
+          <div class="tab">Geçmiş · 128</div>
+        </div>
+
+        <div class="queue-item">
+          <img class="queue-thumb" src="https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?q=80&w=200&auto=format&fit=crop"/>
+          <div>
+            <p class="q-title">Gece Kaydı — Tam Set</p>
+            <div class="q-sub"><span class="status-chip downloading">indiriliyor</span><span class="mono">15.4 MiB/s</span><span>ETA 00:03:14</span></div>
+            <div class="reel-progress" style="margin-top:8px;" id="reelA"></div>
+          </div>
+          <div class="q-actions">
+            <button class="icon-btn">⏸</button>
+            <button class="icon-btn">✕</button>
+          </div>
+        </div>
+
+        <div class="queue-item">
+          <img class="queue-thumb" src="https://images.unsplash.com/photo-1516280440614-37939bbacd81?q=80&w=200&auto=format&fit=crop"/>
+          <div>
+            <p class="q-title">Röportaj — Bölüm 2 (klip)</p>
+            <div class="q-sub"><span class="status-chip paused">duraklatıldı</span><span class="mono">%42</span></div>
+            <div class="reel-progress" style="margin-top:8px;" id="reelB"></div>
+          </div>
+          <div class="q-actions">
+            <button class="icon-btn">▶</button>
+            <button class="icon-btn">✕</button>
+          </div>
+        </div>
+
+        <div class="queue-item">
+          <img class="queue-thumb" src="https://images.unsplash.com/photo-1478737270239-2f02b77fc618?q=80&w=200&auto=format&fit=crop"/>
+          <div>
+            <p class="q-title">Canlı Prova Görüntüsü</p>
+            <div class="q-sub"><span class="status-chip finished">tamamlandı</span><span class="mono">228 MB</span></div>
+            <div class="reel-progress" id="reelC"></div>
+          </div>
+          <div class="q-actions">
+            <button class="icon-btn">📁</button>
+            <button class="icon-btn">✕</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="col-r">
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title"><span class="idx mono">03</span><h2>Ayarlar</h2></div>
+        </div>
+        <div class="tabs">
+          <div class="tab active">Görüntü</div>
+          <div class="tab">Ses</div>
+          <div class="tab">Ağ &amp; Gelişmiş</div>
+        </div>
+
+        <div class="grid2">
+          <div class="opt-card selected"><span class="t">1080p</span><span class="s">H.264 / MP4</span></div>
+          <div class="opt-card"><span class="t">1440p</span><span class="s">VP9 / WEBM</span></div>
+          <div class="opt-card"><span class="t">2160p</span><span class="s">AV1 / MKV</span></div>
+          <div class="opt-card"><span class="t">En İyi</span><span class="s">Kaynak Otomatik</span></div>
+        </div>
+
+        <div style="margin-top:18px;">
+          <div class="toggle-row"><span class="t">Altyazı Göm</span><div class="toggle-sw on"></div></div>
+          <div class="toggle-row"><span class="t">SponsorBlock Atla</span><div class="toggle-sw on"></div></div>
+          <div class="toggle-row"><span class="t">Küçük Resmi Göm</span><div class="toggle-sw"></div></div>
+          <div class="toggle-row"><span class="t">Dosya Adlarını Sınırla</span><div class="toggle-sw"></div></div>
+        </div>
+
+        <div class="preset-row">
+          <select><option>Ön Ayar — "Podcast 1080p"</option></select>
+          <button class="btn btn-ghost btn-sm">Kaydet</button>
+        </div>
+      </div>
+
+      <div class="panel" style="border-bottom:none;">
+        <div class="panel-head">
+          <div class="panel-title"><span class="idx mono">04</span><h2>Tarama Hızı</h2></div>
+          <span class="meta-badge">4 paralel iş parçacığı</span>
+        </div>
+
+        <div class="scope-box">
+          <div class="scope-head">
+            <div><span class="speed-val">15.4</span> <span class="speed-unit">MiB/s</span></div>
+            <span class="mono" style="font-size:11px; color:var(--ink-faint)">60sn geçmiş</span>
+          </div>
+          <svg viewBox="0 0 300 70" width="100%" height="70" class="scope-grid">
+            <polyline fill="none" stroke="var(--accent)" stroke-width="1.6"
+              points="0,50 15,44 30,48 45,30 60,36 75,20 90,28 105,15 120,22 135,10 150,18 165,26 180,14 195,20 210,8 225,16 240,12 255,22 270,16 285,10 300,18"/>
+            <polygon fill="var(--accent)" opacity="0.12"
+              points="0,50 15,44 30,48 45,30 60,36 75,20 90,28 105,15 120,22 135,10 150,18 165,26 180,14 195,20 210,8 225,16 240,12 255,22 270,16 285,10 300,18 300,70 0,70"/>
+          </svg>
+        </div>
+
+        <div class="console">
+          <div class="ln"><span class="t">12:04:41</span><span class="m">[download] destination: Studio_Session_04.f137.mp4</span></div>
+          <div class="ln ok"><span class="t">12:04:52</span><span class="m ok">[Merger] birleştiriliyor → .mp4</span></div>
+          <div class="ln"><span class="t">12:05:03</span><span class="m">[SponsorBlock] 2 bölüm atlandı</span></div>
+          <div class="ln warn"><span class="t">12:05:09</span><span class="m">[warn] altyazı akışı bulunamadı, atlanıyor</span></div>
+        </div>
+
+        <div class="transport">
+          <button class="btn btn-primary">▶ Başlat</button>
+          <button class="btn btn-ghost">■ Durdur</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="credits">
+    <span class="mono">yt-dlp core · ffmpeg hazır</span>
+    <span class="mono">v2.4.0 — Bursa</span>
+  </footer>
+</div>
+
+<script>
+  // sprocket rail generator
+  const rail = document.getElementById('sprocketTop');
+  for(let i=0;i<48;i++){ const s=document.createElement('span'); rail.appendChild(s); }
+
+  // reel-strip progress renderers
+  function paintReel(id, filled, total){
+    const el = document.getElementById(id);
+    el.innerHTML='';
+    for(let i=0;i<total;i++){
+      const b=document.createElement('i');
+      if(i<filled) b.classList.add('on');
+      el.appendChild(b);
+    }
+  }
+  paintReel('reelA', 26, 40);
+  paintReel('reelB', 17, 40);
+  paintReel('reelC', 40, 40);
+
+  // theme toggle
+  const root = document.documentElement;
+  const btnDark = document.getElementById('btnDark');
+  const btnLight = document.getElementById('btnLight');
+  function setTheme(mode){
+    root.classList.remove('theme-dark','theme-light');
+    root.classList.add(mode === 'dark' ? 'theme-dark' : 'theme-light');
+    btnDark.classList.toggle('active', mode==='dark');
+    btnLight.classList.toggle('active', mode==='light');
+  }
+  btnDark.addEventListener('click', ()=>setTheme('dark'));
+  btnLight.addEventListener('click', ()=>setTheme('light'));
+  setTheme('dark');
+
+  // tab switching (visual only, first group)
+  document.querySelectorAll('.tabs').forEach(group=>{
+    group.querySelectorAll('.tab').forEach(tab=>{
+      tab.addEventListener('click', ()=>{
+        group.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+        tab.classList.add('active');
+      });
+    });
+  });
+
+  // option cards
+  document.querySelectorAll('.grid2').forEach(grid=>{
+    grid.querySelectorAll('.opt-card').forEach(card=>{
+      card.addEventListener('click', ()=>{
+        grid.querySelectorAll('.opt-card').forEach(c=>c.classList.remove('selected'));
+        card.classList.add('selected');
+      });
+    });
+  });
+
+  // toggle switches
+  document.querySelectorAll('.toggle-sw').forEach(sw=>{
+    sw.addEventListener('click', ()=> sw.classList.toggle('on'));
+  });
+</script>
+</body>
+</html>

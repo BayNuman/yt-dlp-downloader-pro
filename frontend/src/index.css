@@ -1,0 +1,199 @@
+@import "tailwindcss";
+
+/* ── Fonts ── */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+/* ── Tailwind v4 dark mode variant (selector-based) ── */
+@variant dark (&:where(.theme-makara, .theme-makara *, .theme-gece-mavisi, .theme-gece-mavisi *, .theme-orman, .theme-orman *));
+
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-mono: 'IBM Plex Mono', 'Consolas', monospace;
+}
+
+/* ╔══════════════════════════════════════════╗
+   ║    THEME 1: MAKARA — Vintage Cinema     ║
+   ║    Mood: Nostaljik, sıcak, analog film  ║
+   ╚══════════════════════════════════════════╝ */
+html.theme-makara {
+  --bg: #14110F;
+  --bg-elevated: #1C1712;
+  --bg-recessed: #0E0C0A;
+  --ink: #F2ECDF;
+  --ink-dim: #A79C89;
+  --ink-faint: #6E6455;
+  --accent: #E8A33D;
+  --accent-deep: #C97A2B;
+  --accent-ink: #14110F;
+  --teal: #5FB3AC;
+  --success: #7CBB84;
+  --error: #DD6B57;
+  --warning: #E8A33D;
+  --hairline: rgba(242,236,223,0.10);
+  --hairline-strong: rgba(242,236,223,0.18);
+  --sprocket: rgba(242,236,223,0.14);
+  --shadow: 0 20px 50px rgba(0,0,0,0.45);
+  --scrim: rgba(0,0,0,0.55);
+  --radius: 3px;
+  color-scheme: dark;
+}
+
+/* ╔══════════════════════════════════════════╗
+   ║    THEME 2: GECE MAVİSİ — Deep Ocean   ║
+   ║    Mood: Profesyonel, sakin, stüdyo     ║
+   ╚══════════════════════════════════════════╝ */
+html.theme-gece-mavisi {
+  --bg: #0C1222;
+  --bg-elevated: #141D33;
+  --bg-recessed: #080D1A;
+  --ink: #E2E8F4;
+  --ink-dim: #8896B3;
+  --ink-faint: #566380;
+  --accent: #6C9BF2;
+  --accent-deep: #4A7BD4;
+  --accent-ink: #0C1222;
+  --teal: #4ECDC4;
+  --success: #7CBB84;
+  --error: #E06C75;
+  --warning: #E8B84D;
+  --hairline: rgba(226,232,244,0.10);
+  --hairline-strong: rgba(226,232,244,0.18);
+  --sprocket: rgba(226,232,244,0.12);
+  --shadow: 0 20px 50px rgba(0,0,0,0.50);
+  --scrim: rgba(8,13,26,0.60);
+  --radius: 3px;
+  color-scheme: dark;
+}
+
+/* ╔══════════════════════════════════════════╗
+   ║    THEME 3: ORMAN — Night Forest        ║
+   ║    Mood: Doğal, dinlendirici, organik   ║
+   ╚══════════════════════════════════════════╝ */
+html.theme-orman {
+  --bg: #0D1510;
+  --bg-elevated: #152018;
+  --bg-recessed: #090F0B;
+  --ink: #DDE8DF;
+  --ink-dim: #8DA693;
+  --ink-faint: #5E7563;
+  --accent: #7BC67E;
+  --accent-deep: #5AA65D;
+  --accent-ink: #0D1510;
+  --teal: #9ECBB3;
+  --success: #7CBB84;
+  --error: #DD6B57;
+  --warning: #D4A843;
+  --hairline: rgba(221,232,223,0.10);
+  --hairline-strong: rgba(221,232,223,0.18);
+  --sprocket: rgba(221,232,223,0.12);
+  --shadow: 0 20px 50px rgba(0,0,0,0.45);
+  --scrim: rgba(9,15,11,0.55);
+  --radius: 3px;
+  color-scheme: dark;
+}
+
+/* ╔══════════════════════════════════════════╗
+   ║    THEME 4: KÂĞIT — Vintage Paper       ║
+   ║    Mood: Sıcak, el yapımı, antika       ║
+   ╚══════════════════════════════════════════╝ */
+html.theme-kagit {
+  --bg: #F2E9D8;
+  --bg-elevated: #FFFCF4;
+  --bg-recessed: #E8DCC4;
+  --ink: #241E14;
+  --ink-dim: #7A6F5A;
+  --ink-faint: #A69A82;
+  --accent: #B8681F;
+  --accent-deep: #93531A;
+  --accent-ink: #FFFBF2;
+  --teal: #2F7A78;
+  --success: #4C8F55;
+  --error: #B8412F;
+  --warning: #B8681F;
+  --hairline: rgba(36,30,20,0.12);
+  --hairline-strong: rgba(36,30,20,0.22);
+  --sprocket: rgba(36,30,20,0.16);
+  --shadow: 0 20px 40px rgba(90,70,30,0.14);
+  --scrim: rgba(36,30,20,0.35);
+  --radius: 3px;
+  color-scheme: light;
+}
+
+/* ╔══════════════════════════════════════════╗
+   ║    THEME 5: BULUT — Clear Sky           ║
+   ║    Mood: Temiz, modern, minimal         ║
+   ╚══════════════════════════════════════════╝ */
+html.theme-bulut {
+  --bg: #F0F4F8;
+  --bg-elevated: #FFFFFF;
+  --bg-recessed: #E2E8F0;
+  --ink: #1A2332;
+  --ink-dim: #5A6B82;
+  --ink-faint: #8896A8;
+  --accent: #4A7BF7;
+  --accent-deep: #3461D4;
+  --accent-ink: #FFFFFF;
+  --teal: #2AA198;
+  --success: #4C8F55;
+  --error: #D94F4F;
+  --warning: #D4952A;
+  --hairline: rgba(26,35,50,0.10);
+  --hairline-strong: rgba(26,35,50,0.18);
+  --sprocket: rgba(26,35,50,0.12);
+  --shadow: 0 20px 40px rgba(40,60,100,0.10);
+  --scrim: rgba(26,35,50,0.30);
+  --radius: 3px;
+  color-scheme: light;
+}
+
+/* ╔══════════════════════════════════════════╗
+   ║    THEME 6: BAHÇE — Spring Garden       ║
+   ║    Mood: Canlı, ferah, doğal            ║
+   ╚══════════════════════════════════════════╝ */
+html.theme-bahce {
+  --bg: #F0F5EE;
+  --bg-elevated: #FAFDF9;
+  --bg-recessed: #E0EAD8;
+  --ink: #1A2618;
+  --ink-dim: #5A7055;
+  --ink-faint: #8A9E85;
+  --accent: #3D8B37;
+  --accent-deep: #2D6B28;
+  --accent-ink: #FFFFFF;
+  --teal: #6B9080;
+  --success: #4C8F55;
+  --error: #C0392B;
+  --warning: #B8842A;
+  --hairline: rgba(26,38,24,0.10);
+  --hairline-strong: rgba(26,38,24,0.18);
+  --sprocket: rgba(26,38,24,0.12);
+  --shadow: 0 20px 40px rgba(40,70,30,0.10);
+  --scrim: rgba(26,38,24,0.30);
+  --radius: 3px;
+  color-scheme: light;
+}
+
+/* ── Base Styles ── */
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.35s ease, color 0.35s ease;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* ── Global Smooth Transitions ── */
+* {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}

@@ -13,6 +13,7 @@ import signal
 from typing import NamedTuple
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, wait
+from core.events import EventEmitter, AppEvent, EventKind
 
 class CommandResult(NamedTuple):
     returncode: int
@@ -46,15 +47,6 @@ def get_subprocess_encoding() -> str:
             return "utf-8"
     return "utf-8"
 
-def safe_put_ui(ui_queue, item):
-    try:
-        # Bloklanmaya veya timeout'a kesinlikle izin yok
-        ui_queue.put_nowait(item)
-    except queue.Full:
-        # Load Shedding: UI yetişemiyorsa paketi düşür (drop).
-        # Progress stat'ları veya terminal logları anlıktır, bir sonraki tick'te yenisi gelir.
-        # Worker thread asla UI'ı beklememeli.
-        pass
 
 # Thread-safe subprocess tracking to prevent Zombie Processes
 active_subprocess_lock = threading.Lock()
@@ -97,9 +89,9 @@ def kill_all_active_subprocesses():
 from core.waveform import enqueue_waveform_generation
 from core.utils import clean_empty_directories, extract_video_id
 
-def _on_waveform_done(task_id, png_path, ui_queue):
+def _on_waveform_done(task_id, png_path, emitter: EventEmitter):
     update_download_status(task_id, "COMPLETED", thumbnail_path=png_path)
-    safe_put_ui(ui_queue, ("queue_sync", None))
+    emitter.emit(AppEvent(EventKind.QUEUE_SYNC))
 
 # Core state & DB models
 from core.app_state import AppState, DownloadTask, TaskStatus
@@ -142,7 +134,7 @@ def append_options_before_urls(cmd: list[str], urls: list[str], options: list[st
     url_area = cmd[-len(urls):]
     return option_area + options + url_area
 
-def run_command_stream(cmd: list[str], task: DownloadTask, state: AppState, ui_queue, cancel_event) -> CommandResult:
+def run_command_stream(cmd: list[str], task: DownloadTask, state: AppState, emitter: EventEmitter, cancel_event) -> CommandResult:
     progress_re = re.compile(
         r"\[download\]\s+(\d{1,3}(?:\.\d+)?)%\s+of\s+(~?\d+(?:\.\d+)?\w+)\s+at\s+(\d+(?:\.\d+)?\w+/s|Unknown speed)\s+ETA\s+(\d{2}:\d{2}|\w+)"
     )
@@ -177,7 +169,7 @@ def run_command_stream(cmd: list[str], task: DownloadTask, state: AppState, ui_q
         register_active_subprocess(process)
         for line in process.stdout:
             # Prefix UI logs with task title for concurrent visibility
-            safe_put_ui(ui_queue, ("log", f"[{task.title[:18]}...] {line}"))
+            emitter.emit(AppEvent(EventKind.LOG, f"[{task.title[:18]}...] {line}"))
 
             if cancel_event.is_set() or task.cancel_event.is_set():
                 process.terminate()
@@ -197,34 +189,34 @@ def run_command_stream(cmd: list[str], task: DownloadTask, state: AppState, ui_q
                     "speed": speed_str,
                     "eta": eta_str,
                 }
-                safe_put_ui(ui_queue, ("stats", stats_payload))
+                emitter.emit(AppEvent(EventKind.STATS, stats_payload))
 
             dest_match = dest_re.search(line)
             if dest_match:
                 full_path = dest_match.group(1).strip()
                 filename = Path(full_path).name
-                safe_put_ui(ui_queue, ("active_file", (task.id, filename)))
+                emitter.emit(AppEvent(EventKind.ACTIVE_FILE, (task.id, filename)))
                 task._output_file = full_path
 
             already_match = already_re.search(line)
             if already_match:
                 full_path = already_match.group(1).strip()
                 filename = Path(full_path).name
-                safe_put_ui(ui_queue, ("active_file", (task.id, filename)))
+                emitter.emit(AppEvent(EventKind.ACTIVE_FILE, (task.id, filename)))
                 task._output_file = full_path
 
             merge_match = merge_re.search(line)
             if merge_match:
                 full_path = merge_match.group(1).strip()
                 filename = Path(full_path).name
-                safe_put_ui(ui_queue, ("active_file", (task.id, filename)))
+                emitter.emit(AppEvent(EventKind.ACTIVE_FILE, (task.id, filename)))
                 task._output_file = full_path
 
             post_match = post_re.search(line)
             if post_match:
                 full_path = post_match.group(2).strip()
                 filename = Path(full_path).name
-                safe_put_ui(ui_queue, ("active_file", (task.id, filename)))
+                emitter.emit(AppEvent(EventKind.ACTIVE_FILE, (task.id, filename)))
                 task._output_file = full_path
 
             if "HTTP Error 403: Forbidden" in line:
@@ -250,24 +242,24 @@ def wait_process_with_timeout(proc, timeout=120) -> int:
 
 # clean_empty_directories is now imported from core.utils
 
-def _handle_cancel(task, lang, ui_queue, base_dir=None):
+def _handle_cancel(task, lang, emitter: EventEmitter, base_dir=None):
     task.status_code = TaskStatus.CANCELLED
     task.status = "Cancelled"
     update_download_status(task.id, "CANCELLED")
     if base_dir and getattr(task, "_output_file", None):
         clean_empty_directories(task._output_file, base_dir)
-    safe_put_ui(ui_queue, ("toast_cancel", task.title))
-    safe_put_ui(ui_queue, ("queue_sync", None))
+    emitter.emit(AppEvent(EventKind.TOAST_CANCEL, task.title))
+    emitter.emit(AppEvent(EventKind.QUEUE_SYNC))
 
-def _set_downloading_status(task, lang, ui_queue):
+def _set_downloading_status(task, lang, emitter: EventEmitter):
     task.status_code = TaskStatus.DOWNLOADING
     task.status = "Downloading"
-    safe_put_ui(ui_queue, ("queue_sync", None))
+    emitter.emit(AppEvent(EventKind.QUEUE_SYNC))
 
-def _log_start(task, cmd, ui_queue):
-    safe_put_ui(ui_queue, ("active_file", (task.id, task.title)))
-    safe_put_ui(ui_queue, ("log", f"\n[queue] Download Started: {task.title}\n"))
-    safe_put_ui(ui_queue, ("log", f"$ {format_cmd_for_log(cmd)}\n"))
+def _log_start(task, cmd, emitter: EventEmitter):
+    emitter.emit(AppEvent(EventKind.ACTIVE_FILE, (task.id, task.title)))
+    emitter.emit(AppEvent(EventKind.LOG, f"\n[queue] Download Started: {task.title}\n"))
+    emitter.emit(AppEvent(EventKind.LOG, f"$ {format_cmd_for_log(cmd)}\n"))
     add_download_record(
         item_id=task.id,
         title=task.title,
@@ -339,8 +331,8 @@ def _apply_clip_profile(task, ffmpeg_bin: str, input_path: Path, output_path: Pa
 
     return proc is not None and proc.returncode == 0 and output_path.exists()
 
-def _process_macro_clips(task, output_file, lang, ui_queue, cancel_event) -> str:
-    safe_put_ui(ui_queue, ("log", f"[{task.title}] Slicing LeetCode 56 Multi-Clips...\n"))
+def _process_macro_clips(task, output_file, lang, emitter: EventEmitter, cancel_event) -> str:
+    emitter.emit(AppEvent(EventKind.LOG, f"[{task.title}] Slicing LeetCode 56 Multi-Clips...\n"))
     ffmpeg_bin = resolve_ffmpeg_path()
     input_path = Path(output_file)
     macro_start = parse_time_to_seconds(task.clip_start) or 0.0
@@ -364,7 +356,7 @@ def _process_macro_clips(task, output_file, lang, ui_queue, cancel_event) -> str
         suffix = micro.get("output_suffix", f"_clip{idx_m+1}")
         micro_output_path = input_path.parent / f"{input_path.stem}{suffix}.{target_ext}"
 
-        safe_put_ui(ui_queue, ("log", f"[{task.title}] Slicing segment {idx_m+1}/{len(macro_clips)}: {micro_output_path.name}\n"))
+        emitter.emit(AppEvent(EventKind.LOG, f"[{task.title}] Slicing segment {idx_m+1}/{len(macro_clips)}: {micro_output_path.name}\n"))
 
         success = _apply_clip_profile(
             task=task,
@@ -410,7 +402,7 @@ def _process_macro_clips(task, output_file, lang, ui_queue, cancel_event) -> str
         is_homogeneous = len(profiles_used) == 1
 
         if is_homogeneous:
-            safe_put_ui(ui_queue, ("log", f"[{task.title}] Profiller eşleşti. Concat Demuxer ile kayıpsız birleştiriliyor...\n"))
+            emitter.emit(AppEvent(EventKind.LOG, f"[{task.title}] Profiller eşleşti. Concat Demuxer ile kayıpsız birleştiriliyor...\n"))
             from core.merger import LosslessMerger
             merger = LosslessMerger(ffmpeg_bin)
             success = merger.merge_clips(
@@ -421,13 +413,13 @@ def _process_macro_clips(task, output_file, lang, ui_queue, cancel_event) -> str
                 unregister_proc_cb=unregister_active_subprocess
             )
         else:
-            safe_put_ui(ui_queue, ("log", f"[{task.title}] Heterojen profiller tespit edildi. Filtreleme ile yeniden kodlanıyor (Transcode Merge)...\n"))
+            emitter.emit(AppEvent(EventKind.LOG, f"[{task.title}] Heterojen profiller tespit edildi. Filtreleme ile yeniden kodlanıyor (Transcode Merge)...\n"))
             transcode_cmd = [ffmpeg_bin, "-y"]
             for mp in micro_paths:
                 transcode_cmd.extend(["-i", mp])
             
             n = len(micro_paths)
-            if task.mode == "audio":
+            if task.mode.lower() == "audio":
                 filter_str = "".join([f"[{i}:a]" for i in range(n)]) + f"concat=n={n}:v=0:a=1[a]"
                 transcode_cmd.extend([
                     "-filter_complex", filter_str,
@@ -490,8 +482,8 @@ def _process_macro_clips(task, output_file, lang, ui_queue, cancel_event) -> str
             )
     return ret_file
 
-def _process_single_clip(task, output_file, lang, ui_queue, cancel_event) -> str:
-    safe_put_ui(ui_queue, ("log", f"[{task.title}] Postprocessing clip media...\n"))
+def _process_single_clip(task, output_file, lang, emitter: EventEmitter, cancel_event) -> str:
+    emitter.emit(AppEvent(EventKind.LOG, f"[{task.title}] Postprocessing clip media...\n"))
     ffmpeg_bin = resolve_ffmpeg_path()
     input_path = Path(output_file)
     from core.profiles import EXPORT_PROFILES
@@ -596,7 +588,7 @@ def resolve_actual_file_path(output_file: str, url: str) -> str:
         
     return output_file
 
-def _set_completed_status(task, output_file, lang, ui_queue):
+def _set_completed_status(task, output_file, lang, emitter: EventEmitter):
     task.status_code = TaskStatus.COMPLETED
     task.status = "Completed"
     file_size = os.path.getsize(output_file) if output_file and os.path.exists(output_file) else 0
@@ -607,49 +599,53 @@ def _set_completed_status(task, output_file, lang, ui_queue):
     if getattr(task, "mode", "Video") == "Audio" and output_file and os.path.exists(output_file):
         # Enqueue waveform generation in a single-threaded queue to prevent CPU boğulma
         def cb(png):
-            _on_waveform_done(task.id, png, ui_queue)
+            _on_waveform_done(task.id, png, emitter)
         enqueue_waveform_generation(task, output_file, cb)
         
     update_download_status(task.id, "COMPLETED", file_path=output_file or "", file_size=file_size, thumbnail_path=thumb_path)
-    safe_put_ui(ui_queue, ("percent_complete", 1.0))
-    safe_put_ui(ui_queue, ("toast_success", {"title": task.title, "file_path": output_file or ""}))
+    emitter.emit(AppEvent(EventKind.PERCENT_COMPLETE, 1.0))
+    emitter.emit(AppEvent(EventKind.TOAST_SUCCESS, {"title": task.title, "file_path": output_file or ""}))
 
-def _set_failed_status(task, code, lang, ui_queue, base_dir=None):
+def _set_failed_status(task, code, lang, emitter: EventEmitter, base_dir=None):
     task.status_code = TaskStatus.FAILED
     task.status = "Failed"
     update_download_status(task.id, "FAILED")
     if base_dir and getattr(task, "_output_file", None):
         clean_empty_directories(task._output_file, base_dir)
-    safe_put_ui(ui_queue, ("toast_error", {"code": code, "title": task.title}))
+    emitter.emit(AppEvent(EventKind.TOAST_ERROR, {"code": code, "title": task.title}))
 
-def _handle_exception(task, e, lang, ui_queue, base_dir=None):
+def _handle_exception(task, e, lang, emitter: EventEmitter, base_dir=None):
     task.status_code = TaskStatus.FAILED
     task.status = "Failed"
     update_download_status(task.id, "FAILED")
     if base_dir and getattr(task, "_output_file", None):
         clean_empty_directories(task._output_file, base_dir)
-    safe_put_ui(ui_queue, ("log", f"[{task.title}] post-processing error: {e}\n"))
+    emitter.emit(AppEvent(EventKind.LOG, f"[{task.title}] post-processing error: {e}\n"))
 
-def download_single_task(task: DownloadTask, state: AppState, ui_queue, cancel_event) -> None:
+def download_single_task(task: DownloadTask, state: AppState, emitter: EventEmitter, cancel_event) -> None:
+    if hasattr(emitter, "put_nowait") and not hasattr(emitter, "emit"):
+        from core.events import QueueEventEmitter
+        emitter = QueueEventEmitter(emitter)
+
     lang = state.current_lang
     if cancel_event.is_set() or task.cancel_event.is_set():
-        _handle_cancel(task, lang, ui_queue, state.output_dir)
+        _handle_cancel(task, lang, emitter, state.output_dir)
         return
 
-    _set_downloading_status(task, lang, ui_queue)
+    _set_downloading_status(task, lang, emitter)
     cmd = build_command(task, state.output_dir)
-    _log_start(task, cmd, ui_queue)
+    _log_start(task, cmd, emitter)
 
     try:
-        result = run_command_stream(cmd, task, state, ui_queue, cancel_event)
+        result = run_command_stream(cmd, task, state, emitter, cancel_event)
         _cleanup_temp_json(task)
 
         if result.saw_outdated:
             state.saw_outdated_warning = True
-            safe_put_ui(ui_queue, ("toast_outdated", None))
+            emitter.emit(AppEvent(EventKind.TOAST_OUTDATED))
 
         if cancel_event.is_set() or task.cancel_event.is_set():
-            _handle_cancel(task, lang, ui_queue, state.output_dir)
+            _handle_cancel(task, lang, emitter, state.output_dir)
             return
 
         if result.returncode != 0:
@@ -659,9 +655,9 @@ def download_single_task(task: DownloadTask, state: AppState, ui_queue, cancel_e
                 and YOUTUBE_FALLBACK_EXTRACTOR_ARGS not in " ".join(cmd)
             )
             if should_retry:
-                safe_put_ui(ui_queue, ("log", f"[{task.title}] YouTube 403 Forbidden, triggering TV Client fallback...\n"))
+                emitter.emit(AppEvent(EventKind.LOG, f"[{task.title}] YouTube 403 Forbidden, triggering TV Client fallback...\n"))
                 retry_cmd = append_options_before_urls(cmd, [task.url], ["--extractor-args", YOUTUBE_FALLBACK_EXTRACTOR_ARGS])
-                result = run_command_stream(retry_cmd, task, state, ui_queue, cancel_event)
+                result = run_command_stream(retry_cmd, task, state, emitter, cancel_event)
 
         if result.returncode == 0:
             output_file = task._output_file
@@ -671,25 +667,29 @@ def download_single_task(task: DownloadTask, state: AppState, ui_queue, cancel_e
             
             if output_file and os.path.exists(output_file):
                 if task.macro_clips_data:
-                    output_file = _process_macro_clips(task, output_file, lang, ui_queue, cancel_event)
+                    output_file = _process_macro_clips(task, output_file, lang, emitter, cancel_event)
                 elif (task.clip_enabled or task.export_profile != "Default (No Profile)"):
-                    output_file = _process_single_clip(task, output_file, lang, ui_queue, cancel_event)
+                    output_file = _process_single_clip(task, output_file, lang, emitter, cancel_event)
 
             if cancel_event.is_set() or task.cancel_event.is_set():
-                _handle_cancel(task, lang, ui_queue, state.output_dir)
+                _handle_cancel(task, lang, emitter, state.output_dir)
                 return
 
-            _set_completed_status(task, output_file, lang, ui_queue)
+            _set_completed_status(task, output_file, lang, emitter)
         else:
-            _set_failed_status(task, result.returncode, lang, ui_queue, state.output_dir)
+            _set_failed_status(task, result.returncode, lang, emitter, state.output_dir)
 
     except Exception as e:
-        _handle_exception(task, e, lang, ui_queue, state.output_dir)
+        _handle_exception(task, e, lang, emitter, state.output_dir)
     finally:
         _cleanup_temp_json(task)
-        safe_put_ui(ui_queue, ("queue_sync", None))
+        emitter.emit(AppEvent(EventKind.QUEUE_SYNC))
 
-def run_queue_executor(state: AppState, ui_queue, cancel_event) -> None:
+def run_queue_executor(state: AppState, emitter: EventEmitter, cancel_event) -> None:
+    if hasattr(emitter, "put_nowait") and not hasattr(emitter, "emit"):
+        from core.events import QueueEventEmitter
+        emitter = QueueEventEmitter(emitter)
+
     """Processes pending items in parallel utilizing ThreadPoolExecutor based on max_workers."""
     lang = state.current_lang
     state.is_executor_running = True
@@ -703,27 +703,27 @@ def run_queue_executor(state: AppState, ui_queue, cancel_event) -> None:
     
     if not tasks_to_run:
         state.is_executor_running = False
-        safe_put_ui(ui_queue, ("queue_done", None))
+        emitter.emit(AppEvent(EventKind.QUEUE_DONE))
         return
 
     prevent_sleep()
     try:
         status_message = "İşleniyor" if lang == "tr" else ("Procesando" if lang == "es" else "Processing")
-        safe_put_ui(ui_queue, ("status", ("●", "#4f46e5", f"{status_message} (Concurrently)")))
+        emitter.emit(AppEvent(EventKind.STATUS, ("●", "#4f46e5", f"{status_message} (Concurrently)")))
 
         max_workers = state.preferences.max_workers
-        safe_put_ui(ui_queue, ("log", f"[executor] Initiating parallel downloads (max_workers={max_workers}) for {len(tasks_to_run)} tasks...\n"))
+        emitter.emit(AppEvent(EventKind.LOG, f"[executor] Initiating parallel downloads (max_workers={max_workers}) for {len(tasks_to_run)} tasks...\n"))
 
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
             futures = {
-                pool.submit(download_single_task, task, state, ui_queue, task.cancel_event): task
+                pool.submit(download_single_task, task, state, emitter, task.cancel_event): task
                 for task in tasks_to_run
             }
             wait(futures)
     finally:
         allow_sleep()
         state.is_executor_running = False
-        safe_put_ui(ui_queue, ("queue_done", None))
+        emitter.emit(AppEvent(EventKind.QUEUE_DONE))
 
 def toggle_pause_task(task):
     """

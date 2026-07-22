@@ -1,0 +1,364 @@
+/* ── Makara Design System — Custom Elements ── */
+
+/* Film grain overlay — very subtle ambient texture */
+.grain {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  opacity: 0.03;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ── Sprocket Rail — signature film strip perforations ── */
+.sprocket-rail {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 0 18px;
+  height: 100%;
+  overflow: hidden;
+}
+.sprocket-rail span {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--sprocket);
+  flex: none;
+}
+
+/* ── Viewfinder Corner Brackets — cinematic framing ── */
+.viewfinder-frame {
+  position: relative;
+}
+.viewfinder-corner {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-color: var(--accent);
+  opacity: 0.85;
+  z-index: 2;
+  pointer-events: none;
+}
+.viewfinder-corner.tl { top: 10px; left: 10px; border-top: 2px solid; border-left: 2px solid; }
+.viewfinder-corner.tr { top: 10px; right: 10px; border-top: 2px solid; border-right: 2px solid; }
+.viewfinder-corner.bl { bottom: 10px; left: 10px; border-bottom: 2px solid; border-left: 2px solid; }
+.viewfinder-corner.br { bottom: 10px; right: 10px; border-bottom: 2px solid; border-right: 2px solid; }
+
+/* ── Reel Progress Bar — exposed film frames ── */
+.reel-progress {
+  display: flex;
+  gap: 3px;
+  height: 16px;
+  align-items: center;
+}
+.reel-progress i {
+  display: block;
+  width: 6px;
+  height: 12px;
+  border-radius: 1px;
+  background: var(--hairline-strong);
+  flex: none;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.reel-progress i.on {
+  background: var(--accent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+/* ── Custom Toggle Switch — Makara style ── */
+.toggle-sw {
+  width: 34px;
+  height: 19px;
+  border-radius: 999px;
+  background: var(--hairline-strong);
+  position: relative;
+  flex: none;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.toggle-sw.on { background: var(--accent); }
+.toggle-sw::after {
+  content: '';
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  top: 2px;
+  left: 2px;
+  transition: left 0.2s, background 0.2s;
+}
+.toggle-sw.on::after { left: 17px; background: #fff; }
+
+/* ── Status Chips — mono font status labels ── */
+.status-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.status-chip.downloading {
+  background: color-mix(in srgb, var(--teal) 18%, transparent);
+  color: var(--teal);
+}
+.status-chip.paused {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+.status-chip.finished {
+  background: color-mix(in srgb, var(--success) 20%, transparent);
+  color: var(--success);
+}
+.status-chip.error {
+  background: color-mix(in srgb, var(--error) 18%, transparent);
+  color: var(--error);
+}
+.status-chip.waiting {
+  background: var(--hairline-strong);
+  color: var(--ink-dim);
+}
+
+/* ── Slide-in Animation ── */
+@keyframes slide-in {
+  from { transform: translateY(1rem) scale(0.95); opacity: 0; }
+  to   { transform: translateY(0) scale(1);       opacity: 1; }
+}
+.animate-slide-in {
+  animation: slide-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ── Scope Box — speed graph container ── */
+.scope-box {
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+  background: var(--bg-recessed);
+  padding: 16px;
+}
+
+/* ── Console — terminal log output ── */
+.console {
+  background: var(--bg-recessed);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-dim);
+  line-height: 1.9;
+  max-height: 145px;
+  overflow-y: auto;
+}
+.console .ln { display: flex; gap: 10px; }
+.console .ln .ts { color: var(--ink-faint); flex: none; font-size: 10.5px; }
+.console .ln.ok .msg { color: var(--success); }
+.console .ln.warn .msg { color: var(--warning); }
+
+/* ── Option Cards — selectable grid ── */
+.opt-card {
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+  padding: 11px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--bg-elevated);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.opt-card:hover { border-color: var(--ink-faint); }
+.opt-card.selected {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* ── Custom Scrollbar ── */
+.scrollbar-thin::-webkit-scrollbar { height: 6px; width: 6px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--hairline-strong);
+  border-radius: 9999px;
+}
+
+/* ── Panel numbering style ── */
+.panel-idx {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+}
+
+/* ── Topband bar ── */
+.topband {
+  height: 34px;
+  background: var(--bg-recessed);
+  border-bottom: 1px solid var(--hairline);
+  overflow: hidden;
+}
+
+/* ── Field floating label ── */
+.field-float {
+  position: relative;
+}
+.field-float label {
+  position: absolute;
+  top: -8px;
+  left: 12px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: var(--bg);
+  padding: 0 6px;
+  color: var(--ink-faint);
+  z-index: 1;
+}
+
+/* ── Pill badge ── */
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline-strong);
+  font-size: 12px;
+  color: var(--ink-dim);
+  background: var(--bg-elevated);
+}
+
+/* ── Brand mark (reel circle) ── */
+.brand-mark {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.brand-mark::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.brand-mark::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  border: 1px dashed var(--hairline-strong);
+}
+
+/* ── Meta badge ── */
+.meta-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-dim);
+  border: 1px solid var(--hairline-strong);
+  padding: 4px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* ── Dot live indicator ── */
+.dot-live {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 6px var(--success);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ── Theme selector dropdown ── */
+.theme-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--hairline-strong);
+  flex: none;
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.theme-swatch:hover { transform: scale(1.15); }
+.theme-swatch.active { border-color: var(--ink); box-shadow: 0 0 0 2px var(--accent); }
+
+/* ── Dual Range Slider ── */
+.range-slider-container {
+  position: relative;
+  width: 100%;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  margin: 6px 0;
+}
+.range-slider-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--hairline-strong);
+  z-index: 1;
+  overflow: hidden;
+}
+.range-slider-selected {
+  position: absolute;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--accent);
+  z-index: 2;
+}
+.range-slider-input {
+  position: absolute;
+  width: 100%;
+  height: 6px;
+  background: none;
+  appearance: none;
+  -webkit-appearance: none;
+  pointer-events: none;
+  z-index: 3;
+  margin: 0;
+  padding: 0;
+  outline: none;
+}
+.range-slider-input::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-elevated);
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  transition: transform 0.1s;
+}
+.range-slider-input::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+.range-slider-input::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-elevated);
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  transition: transform 0.1s;
+}
+.range-slider-input::-moz-range-thumb:hover {
+  transform: scale(1.2);
+}

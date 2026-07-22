@@ -29,6 +29,7 @@ ffmpeg.exe
 ffprobe.exe
 
 # ── Temporary inspection / large binary artifacts ────────────
+scratch/
 android/tmp_inspect2/
 android/tmp_inspect/
 

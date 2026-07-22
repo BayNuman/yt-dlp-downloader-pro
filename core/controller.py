@@ -20,6 +20,12 @@ class AppController:
     def __init__(self, state: AppState):
         self.state = state
         self._lock = threading.Lock()
+        
+        # Optional hooks for the FastAPI server or CustomTkinter GUI
+        self.on_task_added = None
+        self.on_task_removed = None
+        self.on_metadata_ready = None
+        self.on_metadata_error = None
 
     # extract_video_id is now imported from core.utils
 
@@ -46,9 +52,13 @@ class AppController:
             self.state.current_thumbnail_path = metadata.get("thumbnail_path")
             self.state.current_video_info = metadata.get("raw_info")
             on_success_callback(metadata)
+            if self.on_metadata_ready:
+                self.on_metadata_ready(metadata)
 
         def internal_error(err_str):
             on_error_callback(err_str)
+            if self.on_metadata_error:
+                self.on_metadata_error(err_str)
 
         self.fetch_metadata_async(
             url=url,
@@ -168,6 +178,8 @@ class AppController:
                         task = DownloadTask(**task_params)
                         self.state.queue_list.append(task)
                         added_count += 1
+                        if self.on_task_added:
+                            self.on_task_added(task)
             return True, "", added_count
             
         else:
@@ -222,6 +234,8 @@ class AppController:
                         task = DownloadTask(**macro_item_params)
                         self.state.queue_list.append(task)
                         added_count += 1
+                        if self.on_task_added:
+                            self.on_task_added(task)
             else:
                 # Normal single download
                 item_id = uuid.uuid4().hex
@@ -241,5 +255,55 @@ class AppController:
                 with self.state._lock:
                     self.state.queue_list.append(task)
                 added_count += 1
+                if self.on_task_added:
+                    self.on_task_added(task)
                 
             return True, "", added_count
+
+    def remove_task(self, task_id: str) -> bool:
+        """Removes a task from the active queue list and triggers the task removed hook."""
+        removed = False
+        with self.state._lock:
+            for idx, task in enumerate(self.state.queue_list):
+                if task.id == task_id:
+                    # If it is running, cancel it first
+                    if task.status_code in (TaskStatus.DOWNLOADING, TaskStatus.PAUSED):
+                        task.cancel_event.set()
+                        proc = getattr(task, "_process", None)
+                        if proc:
+                            try:
+                                proc.kill()
+                            except Exception:
+                                pass
+                    self.state.queue_list.pop(idx)
+                    removed = True
+                    break
+        if removed:
+            if self.on_task_removed:
+                self.on_task_removed(task_id)
+        return removed
+
+    def cancel_all_tasks(self):
+        """Cancels all active tasks in the queue list."""
+        with self.state._lock:
+            for task in self.state.queue_list:
+                if task.status_code in (TaskStatus.DOWNLOADING, TaskStatus.PAUSED):
+                    task.cancel_event.set()
+                    proc = getattr(task, "_process", None)
+                    if proc:
+                        try:
+                            # Resume if paused so it can be terminated cleanly
+                            if getattr(task, "is_paused", False):
+                                if os.name == 'nt':
+                                    import ctypes
+                                    ctypes.windll.ntdll.NtResumeProcess(proc._handle)
+                                else:
+                                    import os
+                                    import signal
+                                    os.kill(proc.pid, signal.SIGCONT)
+                        except Exception:
+                            pass
+                        try:
+                            proc.kill()
+                        except Exception:
+                            pass

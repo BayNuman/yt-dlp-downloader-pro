@@ -79,6 +79,44 @@ class DownloadTask:
     _output_file: Optional[str] = None
     _temp_info_json: Optional[str] = None
 
+    def to_dict(self) -> dict:
+        """JSON-safe dictionary representation of the task."""
+        import dataclasses
+        d = {}
+        for f in dataclasses.fields(self):
+            val = getattr(self, f.name)
+            if isinstance(val, threading.Event) or f.name.startswith("_"):
+                continue
+            if isinstance(val, TaskStatus):
+                d[f.name] = val.name
+            else:
+                d[f.name] = val
+        return d
+
+    def to_api_dict(self) -> dict:
+        """API-friendly dictionary representation of the task."""
+        return {
+            "task_id": self.id,
+            "url": self.url,
+            "title": self.title,
+            "duration": self.duration,
+            "preset": self.preset,
+            "status": self.status,
+            "status_code": self.status_code.name if self.status_code else "PENDING",
+            "mode": self.mode,
+            "video_profile": self.video_profile,
+            "audio_quality": self.audio_quality,
+            "clip_enabled": self.clip_enabled,
+            "clip_start": self.clip_start,
+            "clip_end": self.clip_end,
+            "percent": self.percent,
+            "speed": self.speed,
+            "eta": self.eta,
+            "size": self.size,
+            "file_path": self.file_path,
+        }
+
+
 def get_default_lang() -> str:
     import locale
     try:
@@ -107,6 +145,9 @@ def load_app_preferences(prefs):
             prefs.current_lang = data.get("current_lang", prefs.current_lang)
             prefs.current_theme = data.get("current_theme", prefs.current_theme)
             prefs.compact_mode = data.get("compact_mode", prefs.compact_mode)
+            prefs.mode = data.get("mode", prefs.mode)
+            prefs.spotify_client_id = data.get("spotify_client_id", prefs.spotify_client_id)
+            prefs.spotify_client_secret = data.get("spotify_client_secret", prefs.spotify_client_secret)
         except Exception as e:
             print(f"[warning] Failed to load settings: {e}")
 
@@ -119,7 +160,10 @@ def save_app_preferences(prefs):
             "output_dir": prefs.output_dir,
             "current_lang": prefs.current_lang,
             "current_theme": prefs.current_theme,
-            "compact_mode": getattr(prefs, "compact_mode", False)
+            "compact_mode": getattr(prefs, "compact_mode", False),
+            "mode": getattr(prefs, "mode", "Video"),
+            "spotify_client_id": getattr(prefs, "spotify_client_id", ""),
+            "spotify_client_secret": getattr(prefs, "spotify_client_secret", "")
         }
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
@@ -133,7 +177,12 @@ class AppPreferences:
     current_lang: str = field(default_factory=get_default_lang)  # Auto-detected default language
     current_theme: str = "Dark"  # Default theme (Dark, Light)
     active_profile: str = "best"  # best, 1080p, 720p, mp3, custom
+    mode: str = "Video"  # Video, Audio
     custom_settings: Dict = field(default_factory=dict)
+
+    # Spotify Integration
+    spotify_client_id: str = ""
+    spotify_client_secret: str = ""
 
     # Shared settings (SponsorBlock, browser cookies, speed limits)
     sponsorblock_enabled: bool = False
@@ -156,6 +205,19 @@ class AppPreferences:
 
     # Multi-worker concurrency count
     max_workers: int = 3
+
+    def to_dict(self) -> dict:
+        """JSON-safe dictionary representation of preferences."""
+        import dataclasses
+        return {f.name: getattr(self, f.name) for f in dataclasses.fields(self)}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "AppPreferences":
+        """Reconstructs preferences from a dictionary, ignoring unknown keys."""
+        valid_keys = set(cls.__dataclass_fields__.keys())
+        filtered = {k: v for k, v in data.items() if k in valid_keys}
+        return cls(**filtered)
+
 
 @dataclass
 class AppState:
