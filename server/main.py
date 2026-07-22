@@ -21,6 +21,31 @@ def is_port_in_use(port: int) -> bool:
         # Check if port is bound on localhost
         return s.connect_ex(('127.0.0.1', port)) == 0
 
+def kill_port_occupant(port: int):
+    """Finds and kills any stale process using the given port on Windows/Linux."""
+    if not is_port_in_use(port):
+        return
+        
+    logging.info(f"[*] Port {port} is in use. Clearing stale occupant process...")
+    try:
+        if sys.platform == "win32":
+            import subprocess
+            cmd = f'netstat -ano | findstr :{port}'
+            out = subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL)
+            for line in out.strip().splitlines():
+                parts = line.split()
+                if len(parts) >= 5 and "LISTENING" in parts:
+                    pid = parts[-1]
+                    if pid != "0" and int(pid) != os.getpid():
+                        subprocess.run(f'taskkill /F /PID {pid}', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            import subprocess
+            subprocess.run(f'fuser -k {port}/tcp', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        import time
+        time.sleep(0.5)
+    except Exception as e:
+        logging.warning(f"[!] Could not clear port {port}: {e}")
+
 # Global server state reference
 server_state: ServerState = None
 
@@ -28,10 +53,12 @@ server_state: ServerState = None
 async def lifespan(app: FastAPI):
     global server_state
     
-    # 1. Port conflict check
+    # 1. Port conflict check and automatic stale process cleanup
     if is_port_in_use(PORT):
-        logging.critical(f"[-] Port {PORT} is already in use. Aborting startup.")
-        sys.exit(1)
+        kill_port_occupant(PORT)
+        if is_port_in_use(PORT):
+            logging.critical(f"[-] Port {PORT} is already in use and could not be cleared. Aborting startup.")
+            sys.exit(1)
         
     # 2. Initialize Core Layer
     app_state = AppState()

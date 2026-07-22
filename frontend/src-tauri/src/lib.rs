@@ -80,6 +80,15 @@ pub fn run() {
 
       Ok(())
     })
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+    .build(tauri::generate_context!())
+    .expect("error while building tauri application")
+    .run(|_app_handle, event| match event {
+      tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
+        #[cfg(windows)]
+        {
+          let _ = Command::new("cmd").args(["/C", "taskkill /F /IM server-sidecar.exe 2>nul"]).status();
+        }
+      }
+      _ => {}
+    });
 }
