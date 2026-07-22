@@ -25,7 +25,8 @@ def fetch_spotify_tracks(playlist_id: str, client_id: str, client_secret: str) -
     
     headers = {
         "Authorization": f"Basic {auth_b64}",
-        "Content-Type": "application/x-www-form-urlencoded"
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
     token_req = urllib.request.Request(token_url, data=payload, headers=headers, method='POST')
@@ -40,7 +41,8 @@ def fetch_spotify_tracks(playlist_id: str, client_id: str, client_secret: str) -
     tracks = []
     next_url = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks?limit=100"
     tracks_headers = {
-        "Authorization": f"Bearer {access_token}"
+        "Authorization": f"Bearer {access_token}",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
     while next_url and len(tracks) < 300:
@@ -70,6 +72,13 @@ def fetch_spotify_tracks(playlist_id: str, client_id: str, client_secret: str) -
                         "thumbnail": thumb_url
                     })
                 next_url = res_data.get("next")
+        except urllib.error.HTTPError as e:
+            if e.code == 403:
+                raise Exception("Spotify 403 Forbidden: 1) Çalma listesinin 'Herkese Açık' (Public) olduğundan emin olun (Gizli/Private listeler indirilemez). 2) Spotify Dashboard'da Client ID/Secret bilgilerini kontrol edin.")
+            elif e.code == 404:
+                raise Exception("Spotify 404 Not Found: Çalma listesi bulunamadı veya silinmiş.")
+            else:
+                raise Exception(f"Spotify API Error {e.code}: {e.reason}")
         except Exception as e:
             raise Exception(f"Failed to fetch tracks from Spotify API. Details: {str(e)}")
             
